@@ -20,10 +20,10 @@ if errorlevel 1 goto :failed
 
 "%GCC%" -std=c11 -Wall -Wextra -Werror -O2 -finput-charset=UTF-8 ^
     -I "%PROJECT_DIR%src" ^
-    "%PROJECT_DIR%src\main.c" "%PROJECT_DIR%src\motion_logic.c" ^
+    "%PROJECT_DIR%src\main.c" "%PROJECT_DIR%src\motion_logic.c" "%PROJECT_DIR%src\ametek.c" ^
     "%PROJECT_DIR%build\app.res.o" ^
     -o "%PROJECT_DIR%NanoStageControl.exe" ^
-    -municode -mwindows -lcomctl32 -lgdi32 -lm
+    -municode -mwindows -lcomctl32 -lcomdlg32 -lgdi32 -lwinhttp -lm
 if errorlevel 1 goto :failed
 
 "%GCC%" -std=c11 -Wall -Wextra -Werror -O2 -finput-charset=UTF-8 ^
@@ -33,6 +33,15 @@ if errorlevel 1 goto :failed
 if errorlevel 1 goto :failed
 
 "%PROJECT_DIR%build\test_motion_logic.exe"
+if errorlevel 1 goto :failed
+
+"%GCC%" -std=c11 -Wall -Wextra -Werror -O2 -finput-charset=UTF-8 ^
+    -I "%PROJECT_DIR%src" ^
+    "%PROJECT_DIR%tests\test_ametek.c" "%PROJECT_DIR%src\ametek.c" ^
+    -o "%PROJECT_DIR%build\test_ametek.exe" -lwinhttp -lm
+if errorlevel 1 goto :failed
+
+"%PROJECT_DIR%build\test_ametek.exe"
 if errorlevel 1 goto :failed
 
 echo.
