@@ -9,15 +9,19 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#include <commdlg.h>
 #include <errno.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <wchar.h>
 
+#include "ametek.h"
 #include "motion_logic.h"
 
 typedef unsigned int NT_STATUS;
@@ -103,6 +107,25 @@ typedef struct TimedArgs {
     MotionPlan plan;
 } TimedArgs;
 
+typedef struct AmetekArgs {
+    wchar_t host[256];
+    double k;
+    double wavelength_nm;
+} AmetekArgs;
+
+enum AmetekEventKind {
+    AMETEK_EVENT_SAMPLE = 1,
+    AMETEK_EVENT_STATUS,
+    AMETEK_EVENT_DONE
+};
+
+typedef struct AmetekEvent {
+    int kind;
+    int success;
+    AmetekSample sample;
+    wchar_t text[256];
+} AmetekEvent;
+
 enum ControlId {
     ID_LOCATOR = 100,
     ID_CHANNEL,
@@ -115,15 +138,31 @@ enum ControlId {
     ID_DISTANCE,
     ID_DURATION,
     ID_START_TIMED,
-    ID_STOP
+    ID_STOP,
+    ID_AMETEK_HOST,
+    ID_AMETEK_K,
+    ID_AMETEK_LAMBDA,
+    ID_AMETEK_START,
+    ID_AMETEK_STOP,
+    ID_AMETEK_SAVE,
+    ID_PLOT_PAGE_1,
+    ID_PLOT_PAGE_2,
+    ID_PLOT_PAGE_3
 };
 
 #define WM_APP_UI_EVENT (WM_APP + 1)
 #define WM_APP_JOG_DOWN (WM_APP + 2)
 #define WM_APP_JOG_UP (WM_APP + 3)
+#define WM_APP_AMETEK_EVENT (WM_APP + 4)
 
 #define POSITION_REFRESH_TIMER_ID 1U
 #define POSITION_REFRESH_INTERVAL_MS 100U
+#define AMETEK_PLOT_MAX_POINTS 200U
+
+#define PLOT_LEFT 20
+#define PLOT_TOP 570
+#define PLOT_RIGHT 1028
+#define PLOT_BOTTOM 870
 
 static HINSTANCE g_instance;
 static HWND g_main_window;
@@ -143,6 +182,20 @@ static HWND g_connection_status;
 static HWND g_motion_status;
 static HWND g_position;
 static HWND g_plan_summary;
+static HWND g_ametek_host;
+static HWND g_ametek_k;
+static HWND g_ametek_lambda;
+static HWND g_ametek_start;
+static HWND g_ametek_stop;
+static HWND g_ametek_save;
+static HWND g_ametek_status;
+static HWND g_ametek_ch1;
+static HWND g_ametek_ch2;
+static HWND g_ametek_ratio;
+static HWND g_ametek_displacement;
+static HWND g_ametek_maxima;
+static HWND g_ametek_count;
+static HWND g_plot_page_buttons[3];
 static HFONT g_font;
 static HFONT g_arrow_font;
 static HFONT g_title_font;
@@ -156,6 +209,15 @@ static volatile LONG g_device_open = 0;
 static volatile LONG g_active_jog_direction = 0;
 static HANDLE g_stop_event;
 static HANDLE g_worker;
+static volatile LONG g_ametek_running = 0;
+static HANDLE g_ametek_stop_event;
+static HANDLE g_ametek_worker;
+static AmetekSample *g_ametek_samples;
+static size_t g_ametek_sample_count;
+static size_t g_ametek_sample_capacity;
+static double g_ametek_r1_max;
+static double g_ametek_r2_max;
+static int g_plot_page;
 
 static enum AppState app_state(void)
 {
@@ -243,6 +305,89 @@ static void post_ui_event(
     if (!PostMessageW(g_main_window, WM_APP_UI_EVENT, 0, (LPARAM)event)) {
         HeapFree(GetProcessHeap(), 0, event);
     }
+}
+
+static void post_ametek_event(
+    int kind,
+    int success,
+    const AmetekSample *sample,
+    const wchar_t *text)
+{
+    AmetekEvent *event;
+
+    if (InterlockedCompareExchange(&g_closing, 0, 0)) {
+        return;
+    }
+    event = (AmetekEvent *)HeapAlloc(
+        GetProcessHeap(),
+        HEAP_ZERO_MEMORY,
+        sizeof(*event));
+    if (event == NULL) {
+        return;
+    }
+    event->kind = kind;
+    event->success = success;
+    if (sample != NULL) {
+        event->sample = *sample;
+    }
+    if (text != NULL) {
+        wcsncpy(event->text, text, 255);
+        event->text[255] = L'\0';
+    }
+    if (!PostMessageW(g_main_window, WM_APP_AMETEK_EVENT, 0, (LPARAM)event)) {
+        HeapFree(GetProcessHeap(), 0, event);
+    }
+}
+
+static void clear_ametek_samples(void)
+{
+    if (g_ametek_samples != NULL) {
+        HeapFree(GetProcessHeap(), 0, g_ametek_samples);
+        g_ametek_samples = NULL;
+    }
+    g_ametek_sample_count = 0;
+    g_ametek_sample_capacity = 0;
+    g_ametek_r1_max = 0.0;
+    g_ametek_r2_max = 0.0;
+}
+
+static int append_ametek_sample(const AmetekSample *sample)
+{
+    AmetekSample *resized;
+    size_t new_capacity;
+
+    if (g_ametek_sample_count == g_ametek_sample_capacity) {
+        new_capacity = g_ametek_sample_capacity == 0 ? 1024 : g_ametek_sample_capacity * 2;
+        if (new_capacity < g_ametek_sample_capacity ||
+            new_capacity > SIZE_MAX / sizeof(*g_ametek_samples)) {
+            return 0;
+        }
+        if (g_ametek_samples == NULL) {
+            resized = (AmetekSample *)HeapAlloc(
+                GetProcessHeap(),
+                0,
+                new_capacity * sizeof(*g_ametek_samples));
+        } else {
+            resized = (AmetekSample *)HeapReAlloc(
+                GetProcessHeap(),
+                0,
+                g_ametek_samples,
+                new_capacity * sizeof(*g_ametek_samples));
+        }
+        if (resized == NULL) {
+            return 0;
+        }
+        g_ametek_samples = resized;
+        g_ametek_sample_capacity = new_capacity;
+    }
+    g_ametek_samples[g_ametek_sample_count++] = *sample;
+    if (g_ametek_sample_count == 1 || sample->r1 > g_ametek_r1_max) {
+        g_ametek_r1_max = sample->r1;
+    }
+    if (g_ametek_sample_count == 1 || sample->r2 > g_ametek_r2_max) {
+        g_ametek_r2_max = sample->r2;
+    }
+    return 1;
 }
 
 static FARPROC load_symbol(HMODULE module, const char *name)
@@ -471,6 +616,82 @@ static void update_controls(void)
     EnableWindow(g_duration, idle);
     EnableWindow(g_start_timed, idle);
     EnableWindow(g_stop, moving);
+}
+
+static void update_ametek_controls(void)
+{
+    BOOL running = InterlockedCompareExchange(&g_ametek_running, 0, 0) != 0;
+
+    EnableWindow(g_ametek_host, !running);
+    EnableWindow(g_ametek_k, !running);
+    EnableWindow(g_ametek_lambda, !running);
+    EnableWindow(g_ametek_start, !running);
+    EnableWindow(g_ametek_stop, running);
+    EnableWindow(g_ametek_save, !running && g_ametek_sample_count > 0);
+}
+
+static DWORD WINAPI ametek_thread(LPVOID parameter)
+{
+    AmetekArgs *args = (AmetekArgs *)parameter;
+    AmetekClient client;
+    AmetekSample sample;
+    wchar_t error[256];
+    ULONGLONG start_ms;
+    ULONGLONG next_sample_ms;
+    unsigned int consecutive_errors = 0;
+    wchar_t status[256];
+
+    if (!ametek_client_open(&client, args->host, error, 256)) {
+        post_ametek_event(AMETEK_EVENT_DONE, 0, NULL, error);
+        HeapFree(GetProcessHeap(), 0, args);
+        return 0;
+    }
+    swprintf(status, 256, L"采集中：10 Hz，只读访问 %ls", args->host);
+    post_ametek_event(AMETEK_EVENT_STATUS, 1, NULL, status);
+    start_ms = GetTickCount64();
+    next_sample_ms = start_ms;
+
+    for (;;) {
+        ULONGLONG now_ms;
+        DWORD wait_ms;
+
+        if (WaitForSingleObject(g_ametek_stop_event, 0) == WAIT_OBJECT_0) {
+            break;
+        }
+        now_ms = GetTickCount64();
+        if (now_ms < next_sample_ms) {
+            wait_ms = (DWORD)(next_sample_ms - now_ms);
+            if (WaitForSingleObject(g_ametek_stop_event, wait_ms) == WAIT_OBJECT_0) {
+                break;
+            }
+        }
+        now_ms = GetTickCount64();
+        if (ametek_client_fetch(
+                &client,
+                (double)(now_ms - start_ms) / 1000.0,
+                args->k,
+                args->wavelength_nm,
+                &sample,
+                error,
+                256)) {
+            consecutive_errors = 0;
+            post_ametek_event(AMETEK_EVENT_SAMPLE, 1, &sample, NULL);
+        } else {
+            ++consecutive_errors;
+            if (consecutive_errors == 1U || consecutive_errors % 10U == 0U) {
+                post_ametek_event(AMETEK_EVENT_STATUS, 0, NULL, error);
+            }
+        }
+        next_sample_ms += AMETEK_SAMPLE_INTERVAL_MS;
+        if (next_sample_ms <= now_ms) {
+            next_sample_ms = now_ms + AMETEK_SAMPLE_INTERVAL_MS;
+        }
+    }
+
+    ametek_client_close(&client);
+    HeapFree(GetProcessHeap(), 0, args);
+    post_ametek_event(AMETEK_EVENT_DONE, 1, NULL, L"采集已停止，可保存 CSV 数据");
+    return 0;
 }
 
 static DWORD WINAPI connect_thread(LPVOID parameter)
@@ -971,7 +1192,7 @@ static void refresh_idle_position(void)
         (NT_INDEX)g_device_channel,
         &current_position);
     if (result == NT_OK) {
-        swprintf(text, 64, L"当前位置：%d nm", current_position);
+        swprintf(text, 64, L"位移台编码器位置：%d nm", current_position);
         SetWindowTextW(g_position, text);
     }
 }
@@ -1059,7 +1280,7 @@ static void disconnect_device(void)
     InterlockedExchange(&g_device_open, 0);
     SetWindowTextW(g_connection_status, L"状态：设备未连接");
     SetWindowTextW(g_motion_status, L"运动状态：待机");
-    SetWindowTextW(g_position, L"当前位置：—");
+    SetWindowTextW(g_position, L"位移台编码器位置：—");
     update_controls();
 }
 
@@ -1164,6 +1385,179 @@ static void start_timed_move(void)
     }
 }
 
+static void finish_ametek_worker_handle(void)
+{
+    if (g_ametek_worker != NULL) {
+        CloseHandle(g_ametek_worker);
+        g_ametek_worker = NULL;
+    }
+}
+
+static void reset_ametek_readouts(void)
+{
+    SetWindowTextW(g_ametek_ch1, L"CH1　X：—　Y：—　R1：—　θ1：—");
+    SetWindowTextW(g_ametek_ch2, L"CH2　X：—　Y：—　R2：—　θ2：—");
+    SetWindowTextW(g_ametek_ratio, L"R1/R2：—");
+    SetWindowTextW(g_ametek_displacement, L"干涉位移：— nm");
+    SetWindowTextW(g_ametek_maxima, L"最大值　R1：—　R2：—");
+    SetWindowTextW(g_ametek_count, L"样本数：0");
+}
+
+static void start_ametek_acquisition(void)
+{
+    AmetekArgs *args;
+    double k;
+    double wavelength_nm;
+    wchar_t host[256];
+    wchar_t *host_start;
+    size_t host_length;
+
+    if (InterlockedCompareExchange(&g_ametek_running, 0, 0)) {
+        return;
+    }
+    GetWindowTextW(g_ametek_host, host, 256);
+    host_start = host;
+    while (*host_start == L' ' || *host_start == L'\t' ||
+           *host_start == L'\r' || *host_start == L'\n') {
+        ++host_start;
+    }
+    if (host_start != host) {
+        memmove(host, host_start, (wcslen(host_start) + 1) * sizeof(*host));
+    }
+    host_length = wcslen(host);
+    while (host_length > 0 &&
+           (host[host_length - 1] == L' ' || host[host_length - 1] == L'\t' ||
+            host[host_length - 1] == L'\r' || host[host_length - 1] == L'\n')) {
+        host[--host_length] = L'\0';
+    }
+    if (host_length == 0) {
+        show_error(L"Ametek 7270 IP 地址不能为空。");
+        return;
+    }
+    if (wcsstr(host, L"://") != NULL || wcschr(host, L'/') != NULL ||
+        wcschr(host, L'\\') != NULL || wcschr(host, L':') != NULL) {
+        show_error(L"7270 IP 中只输入 IP 地址或主机名，不要包含 http://、端口或路径。");
+        return;
+    }
+    if (!parse_double_control(g_ametek_k, &k) || k == 0.0) {
+        show_error(L"k 必须是非零有限数值。");
+        return;
+    }
+    if (!parse_double_control(g_ametek_lambda, &wavelength_nm) || wavelength_nm <= 0.0) {
+        show_error(L"λ 必须是大于 0 的波长，单位为 nm。");
+        return;
+    }
+    if (g_ametek_sample_count > 0 &&
+        MessageBoxW(
+            g_main_window,
+            L"开始新采集会清除窗口中尚未保存的数据。是否继续？",
+            L"开始新采集",
+            MB_OKCANCEL | MB_ICONQUESTION) != IDOK) {
+        return;
+    }
+
+    args = (AmetekArgs *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*args));
+    if (args == NULL) {
+        show_error(L"内存不足，无法启动 Ametek 采集。");
+        return;
+    }
+    wcsncpy(args->host, host, 255);
+    args->host[255] = L'\0';
+    args->k = k;
+    args->wavelength_nm = wavelength_nm;
+    clear_ametek_samples();
+    reset_ametek_readouts();
+    InvalidateRect(g_main_window, NULL, FALSE);
+    ResetEvent(g_ametek_stop_event);
+    InterlockedExchange(&g_ametek_running, 1);
+    SetWindowTextW(g_ametek_status, L"状态：正在连接 Ametek 7270…");
+    update_ametek_controls();
+
+    g_ametek_worker = CreateThread(NULL, 0, ametek_thread, args, 0, NULL);
+    if (g_ametek_worker == NULL) {
+        HeapFree(GetProcessHeap(), 0, args);
+        InterlockedExchange(&g_ametek_running, 0);
+        SetWindowTextW(g_ametek_status, L"状态：无法启动采集线程");
+        update_ametek_controls();
+        show_error(L"无法启动 Ametek 采集线程。");
+    }
+}
+
+static void request_ametek_stop(void)
+{
+    if (!InterlockedCompareExchange(&g_ametek_running, 0, 0)) {
+        return;
+    }
+    SetEvent(g_ametek_stop_event);
+    SetWindowTextW(g_ametek_status, L"状态：正在停止采集…");
+    EnableWindow(g_ametek_stop, FALSE);
+}
+
+static void save_ametek_csv(void)
+{
+    OPENFILENAMEW dialog;
+    SYSTEMTIME now;
+    wchar_t path[MAX_PATH];
+    FILE *file;
+    size_t index;
+
+    if (InterlockedCompareExchange(&g_ametek_running, 0, 0) ||
+        g_ametek_sample_count == 0) {
+        return;
+    }
+    GetLocalTime(&now);
+    swprintf(
+        path,
+        MAX_PATH,
+        L"7270_Data_%04u%02u%02u_%02u%02u%02u.csv",
+        now.wYear,
+        now.wMonth,
+        now.wDay,
+        now.wHour,
+        now.wMinute,
+        now.wSecond);
+    ZeroMemory(&dialog, sizeof(dialog));
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = g_main_window;
+    dialog.lpstrFilter = L"CSV 数据文件 (*.csv)\0*.csv\0所有文件 (*.*)\0*.*\0\0";
+    dialog.lpstrFile = path;
+    dialog.nMaxFile = MAX_PATH;
+    dialog.lpstrDefExt = L"csv";
+    dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    if (!GetSaveFileNameW(&dialog)) {
+        return;
+    }
+
+    file = _wfopen(path, L"wb");
+    if (file == NULL) {
+        show_error(L"无法创建 CSV 文件。");
+        return;
+    }
+    fputs("Time(s),X1,Y1,R1,Theta1(deg),X2,Y2,R2,Theta2(deg),R1/R2,Displacement(nm)\r\n", file);
+    for (index = 0; index < g_ametek_sample_count; ++index) {
+        const AmetekSample *sample = &g_ametek_samples[index];
+        fprintf(
+            file,
+            "%.6f,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\r\n",
+            sample->elapsed_s,
+            sample->x1,
+            sample->y1,
+            sample->r1,
+            sample->theta1,
+            sample->x2,
+            sample->y2,
+            sample->r2,
+            sample->theta2,
+            sample->ratio,
+            sample->displacement_nm);
+    }
+    if (fclose(file) != 0) {
+        show_error(L"CSV 文件写入未完整结束。");
+        return;
+    }
+    MessageBoxW(g_main_window, L"Ametek 数据已保存。", L"保存完成", MB_OK | MB_ICONINFORMATION);
+}
+
 static LRESULT CALLBACK arrow_subclass_proc(
     HWND window,
     UINT message,
@@ -1233,6 +1627,276 @@ static LRESULT CALLBACK arrow_subclass_proc(
     return DefSubclassProc(window, message, w_param, l_param);
 }
 
+enum PlotKind {
+    PLOT_KIND_R = 1,
+    PLOT_KIND_RATIO,
+    PLOT_KIND_DISPLACEMENT
+};
+
+static double plot_value(const AmetekSample *sample, enum PlotKind kind, int series)
+{
+    if (kind == PLOT_KIND_R) {
+        return series == 0 ? sample->r1 : sample->r2;
+    }
+    if (kind == PLOT_KIND_RATIO) {
+        return sample->ratio;
+    }
+    return sample->displacement_nm;
+}
+
+static void draw_plot_series(
+    HDC dc,
+    const RECT *graph,
+    enum PlotKind kind,
+    int series,
+    size_t first,
+    size_t count,
+    double time_min,
+    double time_max,
+    double value_min,
+    double value_max,
+    COLORREF color)
+{
+    HPEN pen;
+    HGDIOBJ old_pen;
+    size_t index;
+    int has_point = 0;
+
+    pen = CreatePen(PS_SOLID, 2, color);
+    if (pen == NULL) {
+        return;
+    }
+    old_pen = SelectObject(dc, pen);
+    for (index = first; index < count; ++index) {
+        const AmetekSample *sample = &g_ametek_samples[index];
+        double value = plot_value(sample, kind, series);
+        int x;
+        int y;
+
+        if (!isfinite(value)) {
+            has_point = 0;
+            continue;
+        }
+        x = graph->left + (int)lround(
+            (sample->elapsed_s - time_min) /
+            (time_max - time_min) *
+            (double)(graph->right - graph->left));
+        y = graph->bottom - (int)lround(
+            (value - value_min) /
+            (value_max - value_min) *
+            (double)(graph->bottom - graph->top));
+        if (has_point) {
+            LineTo(dc, x, y);
+        } else {
+            MoveToEx(dc, x, y, NULL);
+            has_point = 1;
+        }
+    }
+    SelectObject(dc, old_pen);
+    DeleteObject(pen);
+}
+
+static void draw_plot_contents(
+    HDC dc,
+    const RECT *bounds,
+    enum PlotKind kind,
+    const wchar_t *title,
+    COLORREF first_color,
+    COLORREF second_color)
+{
+    RECT graph;
+    HGDIOBJ old_font;
+    HPEN grid_pen;
+    HGDIOBJ old_pen;
+    HBRUSH background;
+    size_t first;
+    size_t index;
+    int series_count = kind == PLOT_KIND_R ? 2 : 1;
+    int series;
+    int has_value = 0;
+    double value_min = DBL_MAX;
+    double value_max = -DBL_MAX;
+    double margin;
+    double time_min;
+    double time_max;
+    wchar_t label[96];
+
+    background = CreateSolidBrush(RGB(250, 252, 255));
+    FillRect(dc, bounds, background != NULL ? background : (HBRUSH)(COLOR_WINDOW + 1));
+    if (background != NULL) DeleteObject(background);
+    FrameRect(dc, bounds, (HBRUSH)GetStockObject(LTGRAY_BRUSH));
+    old_font = SelectObject(dc, g_font);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(35, 45, 60));
+    TextOutW(dc, 10, 4, title, (int)wcslen(title));
+
+    graph.left = 74;
+    graph.right = bounds->right - bounds->left - 12;
+    graph.top = 27;
+    graph.bottom = bounds->bottom - bounds->top - 20;
+    if (g_ametek_sample_count == 0) {
+        SetTextColor(dc, RGB(120, 125, 135));
+        TextOutW(dc, graph.left + 10, graph.top + 12, L"等待采集数据…", 7);
+        SelectObject(dc, old_font);
+        return;
+    }
+
+    first = g_ametek_sample_count > AMETEK_PLOT_MAX_POINTS
+        ? g_ametek_sample_count - AMETEK_PLOT_MAX_POINTS
+        : 0;
+    for (index = first; index < g_ametek_sample_count; ++index) {
+        for (series = 0; series < series_count; ++series) {
+            double value = plot_value(&g_ametek_samples[index], kind, series);
+            if (isfinite(value)) {
+                if (value < value_min) value_min = value;
+                if (value > value_max) value_max = value;
+                has_value = 1;
+            }
+        }
+    }
+    if (!has_value) {
+        SetTextColor(dc, RGB(120, 125, 135));
+        TextOutW(dc, graph.left + 10, graph.top + 12, L"当前数据不可计算", 8);
+        SelectObject(dc, old_font);
+        return;
+    }
+    margin = (value_max - value_min) * 0.1;
+    if (margin <= 0.0) {
+        margin = fabs(value_max) * 0.05;
+        if (margin <= 0.0) margin = 1.0;
+    }
+    value_min -= margin;
+    value_max += margin;
+    time_min = g_ametek_samples[first].elapsed_s;
+    time_max = g_ametek_samples[g_ametek_sample_count - 1].elapsed_s;
+    if (time_max <= time_min) time_max = time_min + 1.0;
+
+    grid_pen = CreatePen(PS_SOLID, 1, RGB(220, 225, 232));
+    old_pen = SelectObject(dc, grid_pen != NULL ? grid_pen : GetStockObject(BLACK_PEN));
+    for (series = 0; series <= 2; ++series) {
+        int y = graph.top + (graph.bottom - graph.top) * series / 2;
+        MoveToEx(dc, graph.left, y, NULL);
+        LineTo(dc, graph.right, y);
+    }
+    MoveToEx(dc, graph.left, graph.top, NULL);
+    LineTo(dc, graph.left, graph.bottom);
+    LineTo(dc, graph.right, graph.bottom);
+    SelectObject(dc, old_pen);
+    if (grid_pen != NULL) DeleteObject(grid_pen);
+
+    SetTextColor(dc, RGB(90, 95, 105));
+    swprintf(label, 96, L"%.5g", value_max);
+    TextOutW(dc, 8, graph.top - 7, label, (int)wcslen(label));
+    swprintf(label, 96, L"%.5g", value_min);
+    TextOutW(dc, 8, graph.bottom - 10, label, (int)wcslen(label));
+    swprintf(label, 96, L"%.1f s", time_min);
+    TextOutW(dc, graph.left, graph.bottom + 2, label, (int)wcslen(label));
+    swprintf(label, 96, L"%.1f s", time_max);
+    {
+        SIZE size;
+        GetTextExtentPoint32W(dc, label, (int)wcslen(label), &size);
+        TextOutW(dc, graph.right - size.cx, graph.bottom + 2, label, (int)wcslen(label));
+    }
+
+    draw_plot_series(
+        dc,
+        &graph,
+        kind,
+        0,
+        first,
+        g_ametek_sample_count,
+        time_min,
+        time_max,
+        value_min,
+        value_max,
+        first_color);
+    if (series_count == 2) {
+        draw_plot_series(
+            dc,
+            &graph,
+            kind,
+            1,
+            first,
+            g_ametek_sample_count,
+            time_min,
+            time_max,
+            value_min,
+            value_max,
+            second_color);
+        SetTextColor(dc, first_color);
+        TextOutW(dc, bounds->right - bounds->left - 92, 4, L"R1", 2);
+        SetTextColor(dc, second_color);
+        TextOutW(dc, bounds->right - bounds->left - 52, 4, L"R2", 2);
+    }
+    SelectObject(dc, old_font);
+}
+
+static void draw_plot_buffered(
+    HDC target,
+    const RECT *bounds,
+    enum PlotKind kind,
+    const wchar_t *title,
+    COLORREF first_color,
+    COLORREF second_color)
+{
+    int width = bounds->right - bounds->left;
+    int height = bounds->bottom - bounds->top;
+    HDC memory = CreateCompatibleDC(target);
+    HBITMAP bitmap;
+    HGDIOBJ old_bitmap;
+    RECT local = {0, 0, width, height};
+
+    if (memory == NULL) {
+        return;
+    }
+    bitmap = CreateCompatibleBitmap(target, width, height);
+    if (bitmap == NULL) {
+        DeleteDC(memory);
+        return;
+    }
+    old_bitmap = SelectObject(memory, bitmap);
+    draw_plot_contents(memory, &local, kind, title, first_color, second_color);
+    BitBlt(target, bounds->left, bounds->top, width, height, memory, 0, 0, SRCCOPY);
+    SelectObject(memory, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory);
+}
+
+static void paint_ametek_plots(HWND window)
+{
+    PAINTSTRUCT paint;
+    HDC dc = BeginPaint(window, &paint);
+    RECT bounds;
+
+    SetRect(&bounds, PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM);
+    if (g_plot_page == 1) {
+        draw_plot_buffered(
+            dc,
+            &bounds,
+            PLOT_KIND_RATIO,
+            L"第 2 页 / 3　幅值比：R1 / R2",
+            RGB(25, 145, 80),
+            RGB(25, 145, 80));
+    } else if (g_plot_page == 2) {
+        draw_plot_buffered(
+            dc,
+            &bounds,
+            PLOT_KIND_DISPLACEMENT,
+            L"第 3 页 / 3　干涉计算位移 (nm，未进行条纹展开)",
+            RGB(185, 45, 175),
+            RGB(185, 45, 175));
+    } else {
+        draw_plot_buffered(
+            dc,
+            &bounds,
+            PLOT_KIND_R,
+            L"第 1 页 / 3　Ametek 幅值：R1 / R2",
+            RGB(30, 100, 220),
+            RGB(220, 55, 55));
+    }
+    EndPaint(window, &paint);
+}
+
 static void create_ui(void)
 {
     HWND group;
@@ -1247,13 +1911,13 @@ static void create_ui(void)
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
 
-    label = make_control(0, L"STATIC", L"NATORS 纳米位移台", SS_LEFT, 24, 18, 340, 34, 0);
+    label = make_control(0, L"STATIC", L"卡西米尔力测量综合控制", SS_LEFT, 24, 18, 460, 34, 0);
     g_title_font = CreateFontW(
         -25, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
     set_control_font(label, g_title_font);
-    make_control(0, L"STATIC", L"卡西米尔力测量 · 运动控制", SS_LEFT, 24, 52, 350, 24, 0);
+    make_control(0, L"STATIC", L"NATORS 纳米位移台 + Ametek 7270 双通道读出", SS_LEFT, 24, 52, 520, 24, 0);
 
     group = make_control(0, L"BUTTON", L" 设备连接 ", BS_GROUPBOX, 20, 84, 722, 118, 0);
     (void)group;
@@ -1332,13 +1996,100 @@ static void create_ui(void)
     g_stop = make_control(0, L"BUTTON", L"停止运动", BS_PUSHBUTTON | WS_TABSTOP, 558, 370, 165, 40, ID_STOP);
 
     g_motion_status = make_control(0, L"STATIC", L"运动状态：待机", SS_LEFT, 24, 458, 712, 26, 0);
-    g_position = make_control(0, L"STATIC", L"当前位置：—", SS_LEFT, 24, 490, 712, 26, 0);
+    g_position = make_control(0, L"STATIC", L"位移台编码器位置：—", SS_LEFT, 24, 490, 712, 26, 0);
     make_control(
         0,
         L"STATIC",
         L"提示：两种模式均使用位置传感器闭环控制；松开后的停止延迟需实机验证。",
         SS_LEFT,
         24, 527, 712, 26, 0);
+
+    group = make_control(0, L"BUTTON", L" Ametek 7270 干涉读出 ", BS_GROUPBOX, 760, 84, 400, 469, 0);
+    (void)group;
+    make_control(0, L"STATIC", L"7270 IP", SS_LEFT, 780, 115, 62, 25, 0);
+    g_ametek_host = make_control(
+        WS_EX_CLIENTEDGE,
+        L"EDIT",
+        L"169.254.1.100",
+        ES_AUTOHSCROLL | WS_TABSTOP,
+        846, 111, 188, 29, ID_AMETEK_HOST);
+    make_control(0, L"STATIC", L"采样：10 Hz", SS_LEFT, 1044, 115, 94, 25, 0);
+    make_control(0, L"STATIC", L"k", SS_LEFT, 780, 151, 18, 25, 0);
+    g_ametek_k = make_control(
+        WS_EX_CLIENTEDGE,
+        L"EDIT",
+        L"1",
+        ES_AUTOHSCROLL | WS_TABSTOP,
+        804, 147, 82, 29, ID_AMETEK_K);
+    make_control(0, L"STATIC", L"λ (nm)", SS_LEFT, 906, 151, 58, 25, 0);
+    g_ametek_lambda = make_control(
+        WS_EX_CLIENTEDGE,
+        L"EDIT",
+        L"632.8",
+        ES_AUTOHSCROLL | WS_TABSTOP,
+        968, 147, 86, 29, ID_AMETEK_LAMBDA);
+    g_ametek_start = make_control(
+        0, L"BUTTON", L"开始采集", BS_PUSHBUTTON | WS_TABSTOP,
+        780, 190, 108, 35, ID_AMETEK_START);
+    g_ametek_stop = make_control(
+        0, L"BUTTON", L"停止采集", BS_PUSHBUTTON | WS_TABSTOP,
+        900, 190, 108, 35, ID_AMETEK_STOP);
+    g_ametek_save = make_control(
+        0, L"BUTTON", L"保存 CSV", BS_PUSHBUTTON | WS_TABSTOP,
+        1020, 190, 118, 35, ID_AMETEK_SAVE);
+    g_ametek_status = make_control(
+        0, L"STATIC", L"状态：尚未开始采集", SS_LEFT,
+        780, 238, 358, 25, 0);
+    g_ametek_ch1 = make_control(
+        0, L"STATIC", L"CH1　X：—　Y：—　R1：—　θ1：—", SS_LEFT,
+        780, 272, 358, 25, 0);
+    g_ametek_ch2 = make_control(
+        0, L"STATIC", L"CH2　X：—　Y：—　R2：—　θ2：—", SS_LEFT,
+        780, 304, 358, 25, 0);
+    g_ametek_ratio = make_control(
+        0, L"STATIC", L"R1/R2：—", SS_LEFT,
+        780, 340, 358, 25, 0);
+    g_ametek_displacement = make_control(
+        0, L"STATIC", L"干涉位移：— nm", SS_LEFT,
+        780, 374, 358, 32, 0);
+    set_control_font(g_ametek_displacement, g_arrow_font);
+    g_ametek_maxima = make_control(
+        0, L"STATIC", L"最大值　R1：—　R2：—", SS_LEFT,
+        780, 416, 358, 25, 0);
+    g_ametek_count = make_control(
+        0, L"STATIC", L"样本数：0", SS_LEFT,
+        780, 447, 358, 25, 0);
+    make_control(
+        0,
+        L"STATIC",
+        L"说明：干涉位移按原脚本公式计算，\n未进行条纹展开；与编码器位置独立。",
+        SS_LEFT,
+        780, 485, 358, 48, 0);
+
+    group = make_control(
+        0,
+        L"BUTTON",
+        L" 图表页 ",
+        BS_GROUPBOX,
+        1042, 570, 118, 300, 0);
+    (void)group;
+    make_control(0, L"STATIC", L"选择当前页", SS_CENTER, 1054, 600, 94, 24, 0);
+    g_plot_page_buttons[0] = make_control(
+        0, L"BUTTON", L"1  幅值", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,
+        1054, 638, 94, 34, ID_PLOT_PAGE_1);
+    g_plot_page_buttons[1] = make_control(
+        0, L"BUTTON", L"2  比值", BS_AUTORADIOBUTTON | WS_TABSTOP,
+        1054, 686, 94, 34, ID_PLOT_PAGE_2);
+    g_plot_page_buttons[2] = make_control(
+        0, L"BUTTON", L"3  位移", BS_AUTORADIOBUTTON | WS_TABSTOP,
+        1054, 734, 94, 34, ID_PLOT_PAGE_3);
+    SendMessageW(g_plot_page_buttons[0], BM_SETCHECK, BST_CHECKED, 0);
+    make_control(
+        0,
+        L"STATIC",
+        L"最近 200 点\n横轴：时间",
+        SS_CENTER,
+        1054, 802, 94, 48, 0);
 }
 
 static int safe_to_close(void)
@@ -1349,6 +2100,9 @@ static int safe_to_close(void)
     InterlockedExchange(&g_closing, 1);
     if (state == APP_JOGGING || state == APP_TIMED_MOVE) {
         SetEvent(g_stop_event);
+    }
+    if (InterlockedCompareExchange(&g_ametek_running, 0, 0)) {
+        SetEvent(g_ametek_stop_event);
     }
     if (g_worker != NULL) {
         wait_result = WaitForSingleObject(g_worker, 5000);
@@ -1362,6 +2116,20 @@ static int safe_to_close(void)
             return 0;
         }
         finish_worker_handle();
+    }
+    if (g_ametek_worker != NULL) {
+        wait_result = WaitForSingleObject(g_ametek_worker, 5000);
+        if (wait_result != WAIT_OBJECT_0) {
+            InterlockedCompareExchange(&g_closing, 0, 1);
+            MessageBoxW(
+                g_main_window,
+                L"Ametek 网络读取尚未结束，暂时不能安全关闭。请稍后重试。",
+                L"正在等待采集停止",
+                MB_OK | MB_ICONWARNING);
+            return 0;
+        }
+        finish_ametek_worker_handle();
+        InterlockedExchange(&g_ametek_running, 0);
     }
     if (InterlockedCompareExchange(&g_device_open, 0, 0)) {
         g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
@@ -1378,12 +2146,13 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             g_main_window = window;
             create_ui();
             update_controls();
+            update_ametek_controls();
             if (SetTimer(
                     window,
                     POSITION_REFRESH_TIMER_ID,
                     POSITION_REFRESH_INTERVAL_MS,
                     NULL) == 0U) {
-                SetWindowTextW(g_position, L"当前位置：刷新定时器启动失败");
+                SetWindowTextW(g_position, L"位移台编码器位置：刷新定时器启动失败");
             }
             return 0;
 
@@ -1407,6 +2176,24 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     return 0;
                 case ID_STOP:
                     if (HIWORD(w_param) == BN_CLICKED) request_stop();
+                    return 0;
+                case ID_AMETEK_START:
+                    if (HIWORD(w_param) == BN_CLICKED) start_ametek_acquisition();
+                    return 0;
+                case ID_AMETEK_STOP:
+                    if (HIWORD(w_param) == BN_CLICKED) request_ametek_stop();
+                    return 0;
+                case ID_AMETEK_SAVE:
+                    if (HIWORD(w_param) == BN_CLICKED) save_ametek_csv();
+                    return 0;
+                case ID_PLOT_PAGE_1:
+                case ID_PLOT_PAGE_2:
+                case ID_PLOT_PAGE_3:
+                    if (HIWORD(w_param) == BN_CLICKED) {
+                        RECT plot = {PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM};
+                        g_plot_page = (int)LOWORD(w_param) - ID_PLOT_PAGE_1;
+                        InvalidateRect(window, &plot, FALSE);
+                    }
                     return 0;
                 case ID_DISTANCE:
                 case ID_DURATION:
@@ -1444,7 +2231,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 finish_worker_handle();
                 if (event->success) {
                     set_app_state(APP_IDLE);
-                    swprintf(text, 320, L"当前位置：%d nm", event->position_nm);
+                    swprintf(text, 320, L"位移台编码器位置：%d nm", event->position_nm);
                     SetWindowTextW(g_position, text);
                 } else {
                     set_app_state(APP_DISCONNECTED);
@@ -1459,7 +2246,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 swprintf(text, 320, L"运动状态：%ls", event->text);
                 SetWindowTextW(g_motion_status, text);
                 if (event->position_nm != 0 || event->elapsed_s > 0.0) {
-                    swprintf(text, 320, L"当前位置：%d nm", event->position_nm);
+                    swprintf(text, 320, L"位移台编码器位置：%d nm", event->position_nm);
                     SetWindowTextW(g_position, text);
                 }
                 update_controls();
@@ -1467,7 +2254,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     MessageBoxW(g_main_window, event->text, L"运动错误", MB_OK | MB_ICONERROR);
                 }
             } else if (event->kind == UI_JOG_POSITION) {
-                swprintf(text, 320, L"当前位置：%d nm", event->position_nm);
+                swprintf(text, 320, L"位移台编码器位置：%d nm", event->position_nm);
                 SetWindowTextW(g_position, text);
             } else if (event->kind == UI_PROGRESS) {
                 swprintf(
@@ -1477,7 +2264,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     event->progress * 100.0,
                     event->elapsed_s);
                 SetWindowTextW(g_motion_status, text);
-                swprintf(text, 320, L"当前位置：%d nm", event->position_nm);
+                swprintf(text, 320, L"位移台编码器位置：%d nm", event->position_nm);
                 SetWindowTextW(g_position, text);
             } else if (event->kind == UI_STATUS_TEXT) {
                 SetWindowTextW(g_motion_status, event->text);
@@ -1485,6 +2272,96 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             HeapFree(GetProcessHeap(), 0, event);
             return 0;
         }
+
+        case WM_APP_AMETEK_EVENT:
+        {
+            AmetekEvent *event = (AmetekEvent *)l_param;
+            wchar_t text[384];
+            RECT plots = {
+                PLOT_LEFT,
+                PLOT_TOP,
+                PLOT_RIGHT,
+                PLOT_BOTTOM
+            };
+
+            if (event == NULL) {
+                return 0;
+            }
+            if (event->kind == AMETEK_EVENT_SAMPLE) {
+                if (!append_ametek_sample(&event->sample)) {
+                    SetEvent(g_ametek_stop_event);
+                    SetWindowTextW(g_ametek_status, L"状态：内存不足，正在停止采集");
+                } else {
+                    swprintf(
+                        text,
+                        384,
+                        L"CH1　X：%.5g　Y：%.5g　R1：%.5g　θ1：%.4g°",
+                        event->sample.x1,
+                        event->sample.y1,
+                        event->sample.r1,
+                        event->sample.theta1);
+                    SetWindowTextW(g_ametek_ch1, text);
+                    swprintf(
+                        text,
+                        384,
+                        L"CH2　X：%.5g　Y：%.5g　R2：%.5g　θ2：%.4g°",
+                        event->sample.x2,
+                        event->sample.y2,
+                        event->sample.r2,
+                        event->sample.theta2);
+                    SetWindowTextW(g_ametek_ch2, text);
+                    if (isfinite(event->sample.ratio)) {
+                        swprintf(text, 384, L"R1/R2：%.8g", event->sample.ratio);
+                    } else {
+                        swprintf(text, 384, L"R1/R2：不可计算（R2 为 0）");
+                    }
+                    SetWindowTextW(g_ametek_ratio, text);
+                    swprintf(
+                        text,
+                        384,
+                        L"干涉位移：%.6f nm",
+                        event->sample.displacement_nm);
+                    SetWindowTextW(g_ametek_displacement, text);
+                    swprintf(
+                        text,
+                        384,
+                        L"最大值　R1：%.6g　R2：%.6g",
+                        g_ametek_r1_max,
+                        g_ametek_r2_max);
+                    SetWindowTextW(g_ametek_maxima, text);
+                    swprintf(
+                        text,
+                        384,
+                        L"样本数：%llu　已采集：%.1f s",
+                        (unsigned long long)g_ametek_sample_count,
+                        event->sample.elapsed_s);
+                    SetWindowTextW(g_ametek_count, text);
+                    InvalidateRect(window, &plots, FALSE);
+                }
+            } else if (event->kind == AMETEK_EVENT_STATUS) {
+                if (event->success) {
+                    swprintf(text, 384, L"状态：%ls", event->text);
+                } else {
+                    swprintf(text, 384, L"状态：读取异常，正在重试：%ls", event->text);
+                }
+                SetWindowTextW(g_ametek_status, text);
+            } else if (event->kind == AMETEK_EVENT_DONE) {
+                finish_ametek_worker_handle();
+                InterlockedExchange(&g_ametek_running, 0);
+                swprintf(text, 384, L"状态：%ls", event->text);
+                SetWindowTextW(g_ametek_status, text);
+                update_ametek_controls();
+                if (!event->success) {
+                    MessageBoxW(g_main_window, event->text, L"Ametek 采集错误", MB_OK | MB_ICONERROR);
+                }
+            }
+            HeapFree(GetProcessHeap(), 0, event);
+            return 0;
+        }
+
+        case WM_PAINT:
+            paint_ametek_plots(window);
+            return 0;
 
         case WM_CLOSE:
             if (safe_to_close()) {
@@ -1495,6 +2372,8 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
         case WM_DESTROY:
             KillTimer(window, POSITION_REFRESH_TIMER_ID);
             if (g_stop_event != NULL) CloseHandle(g_stop_event);
+            if (g_ametek_stop_event != NULL) CloseHandle(g_ametek_stop_event);
+            clear_ametek_samples();
             if (g_api.module != NULL) FreeLibrary(g_api.module);
             if (g_font != NULL) DeleteObject(g_font);
             if (g_arrow_font != NULL) DeleteObject(g_arrow_font);
@@ -1525,6 +2404,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
         MessageBoxW(NULL, L"无法创建停止事件。", L"启动失败", MB_OK | MB_ICONERROR);
         return 1;
     }
+    g_ametek_stop_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (g_ametek_stop_event == NULL) {
+        CloseHandle(g_stop_event);
+        MessageBoxW(NULL, L"无法创建 Ametek 停止事件。", L"启动失败", MB_OK | MB_ICONERROR);
+        return 1;
+    }
 
     ZeroMemory(&window_class, sizeof(window_class));
     window_class.cbSize = sizeof(window_class);
@@ -1539,6 +2424,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
 
     if (!RegisterClassExW(&window_class)) {
         CloseHandle(g_stop_event);
+        CloseHandle(g_ametek_stop_event);
         MessageBoxW(NULL, L"无法注册窗口。", L"启动失败", MB_OK | MB_ICONERROR);
         return 1;
     }
@@ -1546,18 +2432,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
     g_main_window = CreateWindowExW(
         0,
         window_class.lpszClassName,
-        L"卡西米尔力测量 · 纳米位移台控制",
+        L"卡西米尔力测量 · 位移台与干涉读出",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        780,
-        620,
+        1200,
+        920,
         NULL,
         NULL,
         instance,
         NULL);
     if (g_main_window == NULL) {
         CloseHandle(g_stop_event);
+        CloseHandle(g_ametek_stop_event);
         return 1;
     }
 
