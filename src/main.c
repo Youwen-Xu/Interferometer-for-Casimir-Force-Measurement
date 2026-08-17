@@ -122,6 +122,9 @@ enum ControlId {
 #define WM_APP_JOG_DOWN (WM_APP + 2)
 #define WM_APP_JOG_UP (WM_APP + 3)
 
+#define POSITION_REFRESH_TIMER_ID 1U
+#define POSITION_REFRESH_INTERVAL_MS 100U
+
 static HINSTANCE g_instance;
 static HWND g_main_window;
 static HWND g_locator;
@@ -475,6 +478,11 @@ static DWORD WINAPI connect_thread(LPVOID parameter)
     ConnectArgs *args = (ConnectArgs *)parameter;
     NT_INDEX index = 0;
     NT_STATUS result;
+    unsigned int enabled = 0;
+    int current_position = 0;
+    int system_opened = 0;
+    ULONGLONG sensor_start_ms;
+    const wchar_t *failed_operation = L"打开设备";
     wchar_t text[320];
 
     result = g_api.OpenSystem(
@@ -482,16 +490,43 @@ static DWORD WINAPI connect_thread(LPVOID parameter)
         args->locator,
         "sync, open_timeout 3000");
     if (result == NT_OK) {
+        system_opened = 1;
+        failed_operation = L"启用位置传感器";
+        result = g_api.SetSensorEnabled(index, (NT_INDEX)args->channel, NT_SENSOR_ENABLED);
+    }
+    if (result == NT_OK) {
+        failed_operation = L"等待位置传感器就绪";
+        sensor_start_ms = GetTickCount64();
+        do {
+            result = g_api.GetSensorEnabled(index, (NT_INDEX)args->channel, &enabled);
+            if (result != NT_OK || enabled == NT_SENSOR_ENABLED) {
+                break;
+            }
+            Sleep(20);
+        } while (GetTickCount64() - sensor_start_ms <= 3000ULL);
+        if (result == NT_OK && enabled != NT_SENSOR_ENABLED) {
+            result = 15U;
+        }
+    }
+    if (result == NT_OK) {
+        failed_operation = L"读取当前位置";
+        result = g_api.GetPosition(index, (NT_INDEX)args->channel, &current_position);
+    }
+    if (result == NT_OK) {
         g_system_index = index;
         g_device_channel = args->channel;
         InterlockedExchange(&g_device_open, 1);
-        swprintf(text, 320, L"设备已连接（通道 %u）", args->channel);
-        post_ui_event(UI_CONNECT_DONE, 1, result, 0, 0.0, 0.0, text);
+        swprintf(text, 320, L"设备已连接（通道 %u），位置每 100 ms 刷新", args->channel);
+        post_ui_event(UI_CONNECT_DONE, 1, result, current_position, 0.0, 0.0, text);
     } else {
+        if (system_opened) {
+            g_api.CloseSystem(index);
+        }
         swprintf(
             text,
             320,
-            L"连接失败：%ls（NT_STATUS %u）",
+            L"%ls失败：%ls（NT_STATUS %u）",
+            failed_operation,
             nt_error_name(result),
             result);
         post_ui_event(UI_CONNECT_DONE, 0, result, 0, 0.0, 0.0, text);
@@ -920,6 +955,27 @@ static void finish_worker_handle(void)
     }
 }
 
+static void refresh_idle_position(void)
+{
+    NT_STATUS result;
+    int current_position;
+    wchar_t text[64];
+
+    if (app_state() != APP_IDLE ||
+        !InterlockedCompareExchange(&g_device_open, 0, 0)) {
+        return;
+    }
+
+    result = g_api.GetPosition(
+        g_system_index,
+        (NT_INDEX)g_device_channel,
+        &current_position);
+    if (result == NT_OK) {
+        swprintf(text, 64, L"当前位置：%d nm", current_position);
+        SetWindowTextW(g_position, text);
+    }
+}
+
 static void show_error(const wchar_t *message)
 {
     MessageBoxW(g_main_window, message, L"无法执行", MB_OK | MB_ICONWARNING);
@@ -1322,7 +1378,21 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             g_main_window = window;
             create_ui();
             update_controls();
+            if (SetTimer(
+                    window,
+                    POSITION_REFRESH_TIMER_ID,
+                    POSITION_REFRESH_INTERVAL_MS,
+                    NULL) == 0U) {
+                SetWindowTextW(g_position, L"当前位置：刷新定时器启动失败");
+            }
             return 0;
+
+        case WM_TIMER:
+            if (w_param == POSITION_REFRESH_TIMER_ID) {
+                refresh_idle_position();
+                return 0;
+            }
+            break;
 
         case WM_COMMAND:
             switch (LOWORD(w_param)) {
@@ -1374,6 +1444,8 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 finish_worker_handle();
                 if (event->success) {
                     set_app_state(APP_IDLE);
+                    swprintf(text, 320, L"当前位置：%d nm", event->position_nm);
+                    SetWindowTextW(g_position, text);
                 } else {
                     set_app_state(APP_DISCONNECTED);
                 }
@@ -1421,6 +1493,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             return 0;
 
         case WM_DESTROY:
+            KillTimer(window, POSITION_REFRESH_TIMER_ID);
             if (g_stop_event != NULL) CloseHandle(g_stop_event);
             if (g_api.module != NULL) FreeLibrary(g_api.module);
             if (g_font != NULL) DeleteObject(g_font);
