@@ -25,25 +25,19 @@ typedef unsigned int NT_INDEX;
 
 #define NT_OK 0U
 #define NT_SENSOR_ENABLED 1U
-#define NT_NO_ACCUMULATE_RELATIVE_POSITIONS 0U
-#define NT_SPEED_ENABLED 16U
+#define NT_ACCUMULATE_RELATIVE_POSITIONS 1U
+#define NT_SPEED_DISABLED 0U
 
 #define NT_STOPPED_STATUS 0U
-#define NT_STEPPING_STATUS 1U
-#define NT_HOLDING_STATUS 3U
-#define NT_TARGET_STATUS 4U
 #define NT_SENSOR_CLOSED_STATUS 5U
-#define NT_NO_HOLDING_STATUS 6U
 #define NT_PHY_LIMIT_STATUS 10U
 #define NT_SOFT_LIMIT_STATUS 11U
 #define NT_SHORT_CIRCUIT_STATUS 13U
 
 #define CLOSED_LOOP_MAX_FREQUENCY 8000U
-#define POSITION_TOLERANCE_NM 10LL
 
 typedef NT_STATUS (__cdecl *NT_OpenSystem_fn)(NT_INDEX *, const char *, const char *);
 typedef NT_STATUS (__cdecl *NT_CloseSystem_fn)(NT_INDEX);
-typedef NT_STATUS (__cdecl *NT_StepMove_S_fn)(NT_INDEX, NT_INDEX, int, unsigned int, unsigned int);
 typedef NT_STATUS (__cdecl *NT_GotoPositionRelative_S_fn)(NT_INDEX, NT_INDEX, int);
 typedef NT_STATUS (__cdecl *NT_Stop_S_fn)(NT_INDEX, NT_INDEX);
 typedef NT_STATUS (__cdecl *NT_SetSensorEnabled_S_fn)(NT_INDEX, NT_INDEX, unsigned int);
@@ -58,7 +52,6 @@ typedef struct DeviceApi {
     HMODULE module;
     NT_OpenSystem_fn OpenSystem;
     NT_CloseSystem_fn CloseSystem;
-    NT_StepMove_S_fn StepMove;
     NT_GotoPositionRelative_S_fn GotoRelative;
     NT_Stop_S_fn Stop;
     NT_SetSensorEnabled_S_fn SetSensorEnabled;
@@ -82,6 +75,7 @@ enum UiEventKind {
     UI_CONNECT_DONE = 1,
     UI_MOTION_DONE,
     UI_PROGRESS,
+    UI_JOG_POSITION,
     UI_STATUS_TEXT
 };
 
@@ -102,8 +96,7 @@ typedef struct ConnectArgs {
 
 typedef struct JogArgs {
     int direction;
-    unsigned int amplitude;
-    unsigned int frequency;
+    unsigned int speed_nm_s;
 } JogArgs;
 
 typedef struct TimedArgs {
@@ -117,8 +110,7 @@ enum ControlId {
     ID_DISCONNECT,
     ID_BACKWARD,
     ID_FORWARD,
-    ID_AMPLITUDE,
-    ID_FREQUENCY,
+    ID_JOG_SPEED,
     ID_DIRECTION,
     ID_DISTANCE,
     ID_DURATION,
@@ -138,8 +130,7 @@ static HWND g_connect;
 static HWND g_disconnect;
 static HWND g_backward;
 static HWND g_forward;
-static HWND g_amplitude;
-static HWND g_frequency;
+static HWND g_jog_speed;
 static HWND g_direction;
 static HWND g_distance;
 static HWND g_duration;
@@ -302,7 +293,6 @@ static int load_device_api(wchar_t *error, size_t error_capacity)
 
     LOAD_API(OpenSystem, NT_OpenSystem_fn, "NT_OpenSystem");
     LOAD_API(CloseSystem, NT_CloseSystem_fn, "NT_CloseSystem");
-    LOAD_API(StepMove, NT_StepMove_S_fn, "NT_StepMove_S");
     LOAD_API(GotoRelative, NT_GotoPositionRelative_S_fn, "NT_GotoPositionRelative_S");
     LOAD_API(Stop, NT_Stop_S_fn, "NT_Stop_S");
     LOAD_API(SetSensorEnabled, NT_SetSensorEnabled_S_fn, "NT_SetSensorEnabled_S");
@@ -446,9 +436,9 @@ static void update_plan_summary(void)
         swprintf(
             summary,
             256,
-            L"控制器速度：%u nm/s　预计：%.3f s",
-            plan.speed_nm_s,
-            plan.controller_duration_s);
+            L"平均：%.3f nm/s　用时：%.3f s",
+            fabs((double)plan.signed_distance_nm) / plan.requested_duration_s,
+            plan.requested_duration_s);
         SetWindowTextW(g_plan_summary, summary);
     } else {
         SetWindowTextW(g_plan_summary, L"控制器速度：—");
@@ -471,8 +461,7 @@ static void update_controls(void)
 
     EnableWindow(g_backward, idle || (jogging && jog_direction < 0));
     EnableWindow(g_forward, idle || (jogging && jog_direction > 0));
-    EnableWindow(g_amplitude, idle);
-    EnableWindow(g_frequency, idle);
+    EnableWindow(g_jog_speed, idle);
 
     EnableWindow(g_direction, idle);
     EnableWindow(g_distance, idle);
@@ -515,61 +504,188 @@ static DWORD WINAPI connect_thread(LPVOID parameter)
 static DWORD WINAPI jog_thread(LPVOID parameter)
 {
     JogArgs *args = (JogArgs *)parameter;
+    int direction = args->direction;
+    unsigned int speed_nm_s = args->speed_nm_s;
     NT_STATUS result;
+    unsigned int enabled = 0;
     unsigned int status = NT_STOPPED_STATUS;
+    int current_position = 0;
+    ULONGLONG sensor_start_ms;
+    ULONGLONG motion_start_ms = 0;
+    unsigned long long commanded_distance_nm = 0;
+    const wchar_t *failed_operation = NULL;
     wchar_t text[320];
-    int steps = args->direction > 0 ? INT_MAX : -INT_MAX;
 
-    result = g_api.StepMove(
+    HeapFree(GetProcessHeap(), 0, args);
+
+    result = g_api.SetSensorEnabled(
         g_system_index,
         (NT_INDEX)g_device_channel,
-        steps,
-        args->amplitude,
-        args->frequency);
+        NT_SENSOR_ENABLED);
     if (result != NT_OK) {
-        swprintf(
-            text,
-            320,
-            L"连续步进启动失败：%ls（NT_STATUS %u）",
-            nt_error_name(result),
-            result);
-        post_ui_event(UI_MOTION_DONE, 0, result, 0, 0.0, 0.0, text);
-        HeapFree(GetProcessHeap(), 0, args);
-        return 0;
+        failed_operation = L"启用位置传感器";
+        goto failed;
     }
 
-    while (WaitForSingleObject(g_stop_event, 50) == WAIT_TIMEOUT) {
+    sensor_start_ms = GetTickCount64();
+    for (;;) {
+        if (WaitForSingleObject(g_stop_event, 20) == WAIT_OBJECT_0) {
+            g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
+            post_ui_event(UI_MOTION_DONE, 1, NT_OK, current_position, 0.0, 0.0, L"闭环长按运动已取消");
+            return 0;
+        }
+        result = g_api.GetSensorEnabled(
+            g_system_index,
+            (NT_INDEX)g_device_channel,
+            &enabled);
+        if (result != NT_OK) {
+            failed_operation = L"读取传感器状态";
+            goto failed;
+        }
+        if (enabled == NT_SENSOR_ENABLED) {
+            break;
+        }
+        if (GetTickCount64() - sensor_start_ms > 3000ULL) {
+            result = 15U;
+            failed_operation = L"等待位置传感器就绪";
+            goto failed;
+        }
+    }
+
+    result = g_api.SetAccumulate(
+        g_system_index,
+        (NT_INDEX)g_device_channel,
+        NT_ACCUMULATE_RELATIVE_POSITIONS);
+    if (result != NT_OK) {
+        failed_operation = L"启用闭环目标累积";
+        goto failed;
+    }
+
+    result = g_api.SetMaxFrequency(
+        g_system_index,
+        (NT_INDEX)g_device_channel,
+        CLOSED_LOOP_MAX_FREQUENCY);
+    if (result != NT_OK) {
+        failed_operation = L"设置闭环最大频率";
+        goto failed;
+    }
+
+    result = g_api.SetMoveSpeed(
+        g_system_index,
+        (NT_INDEX)g_device_channel,
+        NT_SPEED_DISABLED,
+        0U);
+    if (result != NT_OK) {
+        failed_operation = L"关闭控制器原生速度模式";
+        goto failed;
+    }
+    result = g_api.GetPosition(
+        g_system_index,
+        (NT_INDEX)g_device_channel,
+        &current_position);
+    if (result != NT_OK) {
+        failed_operation = L"读取当前位置";
+        goto failed;
+    }
+
+    motion_start_ms = GetTickCount64();
+    for (;;) {
+        ULONGLONG elapsed_ms;
+        unsigned long long desired_distance_nm;
+        unsigned long long delta_nm;
+        int command_nm;
+        double elapsed_s;
+
+        if (WaitForSingleObject(g_stop_event, 20) == WAIT_OBJECT_0) {
+            goto stopped;
+        }
+        elapsed_ms = GetTickCount64() - motion_start_ms;
+        desired_distance_nm =
+            (unsigned long long)speed_nm_s * (unsigned long long)elapsed_ms / 1000ULL;
+        delta_nm = desired_distance_nm - commanded_distance_nm;
+        if (delta_nm > 0ULL) {
+            if (delta_nm > (unsigned long long)INT_MAX) {
+                delta_nm = INT_MAX;
+            }
+            command_nm = (int)delta_nm;
+            if (direction < 0) {
+                command_nm = -command_nm;
+            }
+            result = g_api.GotoRelative(
+                g_system_index,
+                (NT_INDEX)g_device_channel,
+                command_nm);
+            if (result != NT_OK) {
+                failed_operation = L"追加闭环纳米目标";
+                goto failed_after_motion;
+            }
+            commanded_distance_nm += delta_nm;
+        }
+
         result = g_api.GetStatus(
             g_system_index,
             (NT_INDEX)g_device_channel,
             &status);
         if (result != NT_OK) {
-            break;
+            failed_operation = L"读取运动状态";
+            goto failed_after_motion;
         }
+        result = g_api.GetPosition(
+            g_system_index,
+            (NT_INDEX)g_device_channel,
+            &current_position);
+        if (result != NT_OK) {
+            failed_operation = L"读取当前位置";
+            goto failed_after_motion;
+        }
+        elapsed_s = (double)elapsed_ms / 1000.0;
+        post_ui_event(UI_JOG_POSITION, 1, status, current_position, elapsed_s, 0.0, NULL);
+
         if (is_fault_status(status)) {
             result = 255U;
-            break;
+            failed_operation = L"控制器报告限位或故障";
+            goto failed_after_motion;
         }
     }
 
+stopped:
+    result = g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
+    if (result != NT_OK) {
+        failed_operation = L"停止闭环长按运动";
+        goto failed;
+    }
+    post_ui_event(
+        UI_MOTION_DONE,
+        1,
+        NT_OK,
+        current_position,
+        motion_start_ms == 0 ? 0.0 : (double)(GetTickCount64() - motion_start_ms) / 1000.0,
+        0.0,
+        L"闭环长按运动已停止");
+    return 0;
+
+failed_after_motion:
     g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
 
-    if (result == NT_OK || WaitForSingleObject(g_stop_event, 0) == WAIT_OBJECT_0) {
-        post_ui_event(UI_MOTION_DONE, 1, NT_OK, 0, 0.0, 0.0, L"连续步进已停止");
-    } else if (result == 255U) {
-        swprintf(text, 320, L"控制器报告限位或故障状态（状态码 %u）。", status);
-        post_ui_event(UI_MOTION_DONE, 0, result, 0, 0.0, 0.0, text);
-    } else {
-        swprintf(
-            text,
-            320,
-            L"连续步进中断：%ls（NT_STATUS %u）",
-            nt_error_name(result),
-            result);
-        post_ui_event(UI_MOTION_DONE, 0, result, 0, 0.0, 0.0, text);
+failed:
+    if (failed_operation == NULL) {
+        failed_operation = L"闭环长按运动";
     }
-
-    HeapFree(GetProcessHeap(), 0, args);
+    swprintf(
+        text,
+        320,
+        L"%ls失败：%ls（NT_STATUS %u）",
+        failed_operation,
+        nt_error_name(result),
+        result);
+    post_ui_event(
+        UI_MOTION_DONE,
+        0,
+        result,
+        current_position,
+        motion_start_ms == 0 ? 0.0 : (double)(GetTickCount64() - motion_start_ms) / 1000.0,
+        0.0,
+        text);
     return 0;
 }
 
@@ -597,10 +713,11 @@ static DWORD WINAPI timed_thread(LPVOID parameter)
     int initial_position = 0;
     int current_position = 0;
     long long target_position;
+    unsigned long long total_distance_nm;
+    unsigned long long commanded_distance_nm = 0;
     ULONGLONG start_ms;
     ULONGLONG sensor_start_ms;
-    double timeout_s;
-    long long position_tolerance;
+    double trajectory_duration_s;
     wchar_t text[320];
 
     HeapFree(GetProcessHeap(), 0, args);
@@ -641,9 +758,9 @@ static DWORD WINAPI timed_thread(LPVOID parameter)
     result = g_api.SetAccumulate(
         g_system_index,
         (NT_INDEX)g_device_channel,
-        NT_NO_ACCUMULATE_RELATIVE_POSITIONS);
+        NT_ACCUMULATE_RELATIVE_POSITIONS);
     if (result != NT_OK) {
-        timed_fail(result, L"设置相对位移模式");
+        timed_fail(result, L"启用闭环目标累积");
         return 0;
     }
 
@@ -659,10 +776,10 @@ static DWORD WINAPI timed_thread(LPVOID parameter)
     result = g_api.SetMoveSpeed(
         g_system_index,
         (NT_INDEX)g_device_channel,
-        NT_SPEED_ENABLED,
-        plan.speed_nm_s);
+        NT_SPEED_DISABLED,
+        0U);
     if (result != NT_OK) {
-        timed_fail(result, L"设置闭环速度");
+        timed_fail(result, L"关闭控制器原生速度模式");
         return 0;
     }
 
@@ -681,34 +798,57 @@ static DWORD WINAPI timed_thread(LPVOID parameter)
         post_ui_event(UI_MOTION_DONE, 0, 9U, 0, 0.0, 0.0, L"目标位置超出控制器的 32 位范围。");
         return 0;
     }
-
-    position_tolerance = llabs((long long)plan.signed_distance_nm) / 4LL;
-    if (position_tolerance > POSITION_TOLERANCE_NM) {
-        position_tolerance = POSITION_TOLERANCE_NM;
-    }
-
-    result = g_api.GotoRelative(
-        g_system_index,
-        (NT_INDEX)g_device_channel,
-        plan.signed_distance_nm);
-    if (result != NT_OK) {
-        timed_fail(result, L"启动定时位移");
-        return 0;
-    }
+    total_distance_nm = (unsigned long long)llabs((long long)plan.signed_distance_nm);
+    trajectory_duration_s = plan.requested_duration_s;
 
     start_ms = GetTickCount64();
-    timeout_s = plan.controller_duration_s * 2.0 + 15.0;
-
-    for (;;) {
+    while (commanded_distance_nm < total_distance_nm) {
         double elapsed_s;
         double progress;
-        long long travelled;
-        long long remaining;
+        double trajectory_fraction;
+        unsigned long long desired_distance_nm;
+        unsigned long long delta_nm;
+        int command_nm;
 
-        if (WaitForSingleObject(g_stop_event, 50) == WAIT_OBJECT_0) {
+        if (WaitForSingleObject(g_stop_event, 20) == WAIT_OBJECT_0) {
             g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-            post_ui_event(UI_MOTION_DONE, 1, NT_OK, current_position, 0.0, 0.0, L"定时位移已停止");
+            post_ui_event(
+                UI_MOTION_DONE,
+                1,
+                NT_OK,
+                current_position,
+                (double)(GetTickCount64() - start_ms) / 1000.0,
+                0.0,
+                L"定时位移已停止");
             return 0;
+        }
+
+        elapsed_s = (double)(GetTickCount64() - start_ms) / 1000.0;
+        trajectory_fraction = elapsed_s / trajectory_duration_s;
+        if (trajectory_fraction > 1.0) {
+            trajectory_fraction = 1.0;
+        }
+        desired_distance_nm =
+            (unsigned long long)floor((double)total_distance_nm * trajectory_fraction);
+        if (trajectory_fraction >= 1.0) {
+            desired_distance_nm = total_distance_nm;
+        }
+        delta_nm = desired_distance_nm - commanded_distance_nm;
+        if (delta_nm > 0ULL) {
+            command_nm = (int)delta_nm;
+            if (plan.signed_distance_nm < 0) {
+                command_nm = -command_nm;
+            }
+            result = g_api.GotoRelative(
+                g_system_index,
+                (NT_INDEX)g_device_channel,
+                command_nm);
+            if (result != NT_OK) {
+                g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
+                timed_fail(result, L"追加定时闭环纳米目标");
+                return 0;
+            }
+            commanded_distance_nm += delta_nm;
         }
 
         result = g_api.GetStatus(
@@ -731,12 +871,7 @@ static DWORD WINAPI timed_thread(LPVOID parameter)
             return 0;
         }
 
-        elapsed_s = (double)(GetTickCount64() - start_ms) / 1000.0;
-        travelled = (long long)current_position - (long long)initial_position;
-        progress = fabs((double)travelled) / fabs((double)plan.signed_distance_nm);
-        if (progress > 1.0) {
-            progress = 1.0;
-        }
+        progress = trajectory_fraction;
         post_ui_event(UI_PROGRESS, 1, status, current_position, elapsed_s, progress, NULL);
 
         if (is_fault_status(status)) {
@@ -745,32 +880,36 @@ static DWORD WINAPI timed_thread(LPVOID parameter)
             post_ui_event(UI_MOTION_DONE, 0, 255U, current_position, elapsed_s, progress, text);
             return 0;
         }
-
-        remaining = (long long)current_position - target_position;
-        if (remaining < 0) {
-            remaining = -remaining;
-        }
-        if (remaining <= position_tolerance &&
-            (status == NT_HOLDING_STATUS ||
-             status == NT_STOPPED_STATUS ||
-             status == NT_NO_HOLDING_STATUS)) {
-            swprintf(
-                text,
-                320,
-                L"定时位移完成：实际用时 %.3f s，当前位置 %d nm",
-                elapsed_s,
-                current_position);
-            post_ui_event(UI_MOTION_DONE, 1, NT_OK, current_position, elapsed_s, 1.0, text);
-            return 0;
-        }
-
-        if (elapsed_s > timeout_s) {
-            g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-            swprintf(text, 320, L"运动超时，已停止。当前位置 %d nm。", current_position);
-            post_ui_event(UI_MOTION_DONE, 0, 15U, current_position, elapsed_s, progress, text);
-            return 0;
-        }
     }
+
+    result = g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
+    if (result != NT_OK) {
+        timed_fail(result, L"结束定时闭环轨迹");
+        return 0;
+    }
+    Sleep(50);
+    result = g_api.GetPosition(
+        g_system_index,
+        (NT_INDEX)g_device_channel,
+        &current_position);
+    if (result != NT_OK) {
+        timed_fail(result, L"读取轨迹结束位置");
+        return 0;
+    }
+    {
+        double elapsed_s = (double)(GetTickCount64() - start_ms) / 1000.0;
+        long long measured_distance =
+            (long long)current_position - (long long)initial_position;
+        swprintf(
+            text,
+            320,
+            L"定时轨迹结束：指令 %d nm，测得位移 %lld nm，用时 %.3f s",
+            plan.signed_distance_nm,
+            measured_distance,
+            elapsed_s);
+        post_ui_event(UI_MOTION_DONE, 1, NT_OK, current_position, elapsed_s, 1.0, text);
+    }
+    return 0;
 }
 
 static void finish_worker_handle(void)
@@ -871,19 +1010,16 @@ static void disconnect_device(void)
 static void start_jog(int direction)
 {
     JogArgs *args;
-    unsigned int amplitude;
-    unsigned int frequency;
+    unsigned int speed_nm_s;
     wchar_t text[256];
 
     if (app_state() != APP_IDLE) {
         return;
     }
-    if (!parse_unsigned_control(g_amplitude, &amplitude)) {
-        show_error(L"步进幅值必须是正整数。参考默认值为 4095。");
-        return;
-    }
-    if (!parse_unsigned_control(g_frequency, &frequency)) {
-        show_error(L"步进频率必须是正整数。参考默认值为 2000 Hz。");
+    if (!parse_unsigned_control(g_jog_speed, &speed_nm_s) ||
+        speed_nm_s < MOTION_MIN_SPEED_NM_S ||
+        speed_nm_s > MOTION_MAX_SPEED_NM_S) {
+        show_error(L"长按速度必须在 1–5,000,000 nm/s 范围内。");
         return;
     }
 
@@ -893,8 +1029,7 @@ static void start_jog(int direction)
         return;
     }
     args->direction = direction;
-    args->amplitude = amplitude;
-    args->frequency = frequency;
+    args->speed_nm_s = speed_nm_s;
 
     ResetEvent(g_stop_event);
     InterlockedExchange(&g_active_jog_direction, direction);
@@ -902,8 +1037,9 @@ static void start_jog(int direction)
     swprintf(
         text,
         256,
-        L"运动状态：%ls连续微步中（松开即停）",
-        direction > 0 ? L"前进" : L"后退");
+        L"运动状态：闭环%ls中，速度 %u nm/s（松开即停）",
+        direction > 0 ? L"前进" : L"后退",
+        speed_nm_s);
     SetWindowTextW(g_motion_status, text);
     update_controls();
 
@@ -914,7 +1050,7 @@ static void start_jog(int direction)
         set_app_state(APP_IDLE);
         SetWindowTextW(g_motion_status, L"运动状态：待机");
         update_controls();
-        show_error(L"无法启动连续步进线程。");
+        show_error(L"无法启动闭环长按运动线程。");
     }
 }
 
@@ -955,10 +1091,10 @@ static void start_timed_move(void)
     swprintf(
         text,
         320,
-        L"运动状态：%ls %d nm，速度 %u nm/s",
+        L"运动状态：%ls %d nm，平均速度 %.3f nm/s",
         plan.signed_distance_nm > 0 ? L"前进" : L"后退",
         plan.signed_distance_nm > 0 ? plan.signed_distance_nm : -plan.signed_distance_nm,
-        plan.speed_nm_s);
+        fabs((double)plan.signed_distance_nm) / plan.requested_duration_s);
     SetWindowTextW(g_motion_status, text);
     update_controls();
 
@@ -1083,22 +1219,15 @@ static void create_ui(void)
     g_disconnect = make_control(0, L"BUTTON", L"断开", BS_PUSHBUTTON | WS_TABSTOP, 614, 110, 96, 32, ID_DISCONNECT);
     g_connection_status = make_control(0, L"STATIC", L"状态：设备未连接", SS_LEFT, 38, 158, 665, 25, 0);
 
-    group = make_control(0, L"BUTTON", L" 长按连续微步 ", BS_GROUPBOX, 20, 214, 350, 224, 0);
+    group = make_control(0, L"BUTTON", L" 长按闭环运动 ", BS_GROUPBOX, 20, 214, 350, 224, 0);
     (void)group;
-    make_control(0, L"STATIC", L"步进幅值", SS_LEFT, 40, 249, 76, 25, 0);
-    g_amplitude = make_control(
+    make_control(0, L"STATIC", L"速度 (nm/s)", SS_LEFT, 42, 249, 100, 25, 0);
+    g_jog_speed = make_control(
         WS_EX_CLIENTEDGE,
         L"EDIT",
-        L"4095",
+        L"20",
         ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP,
-        124, 245, 82, 29, ID_AMPLITUDE);
-    make_control(0, L"STATIC", L"频率 (Hz)", SS_LEFT, 218, 249, 76, 25, 0);
-    g_frequency = make_control(
-        WS_EX_CLIENTEDGE,
-        L"EDIT",
-        L"2000",
-        ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP,
-        294, 245, 58, 29, ID_FREQUENCY);
+        150, 245, 118, 29, ID_JOG_SPEED);
     g_backward = make_control(
         0, L"BUTTON", L"◀  后退", BS_PUSHBUTTON | WS_TABSTOP,
         42, 296, 137, 67, ID_BACKWARD);
@@ -1112,7 +1241,7 @@ static void create_ui(void)
     make_control(
         0,
         L"STATIC",
-        L"按住即连续输出极小步进；松开或失焦即停。\n单步位移由幅值、负载与机构共同决定。",
+        L"按住即按设定速度闭环运动；松开或失焦即停。\n运动期间实时刷新位置读数。",
         SS_LEFT,
         42, 378, 306, 48, 0);
 
@@ -1142,7 +1271,7 @@ static void create_ui(void)
         L"5",
         ES_AUTOHSCROLL | WS_TABSTOP,
         665, 288, 58, 29, ID_DURATION);
-    g_plan_summary = make_control(0, L"STATIC", L"控制器速度：20 nm/s　预计：5.000 s", SS_LEFT, 406, 331, 310, 25, 0);
+    g_plan_summary = make_control(0, L"STATIC", L"平均：20.000 nm/s　用时：5.000 s", SS_LEFT, 406, 331, 315, 25, 0);
     g_start_timed = make_control(0, L"BUTTON", L"开始运动", BS_DEFPUSHBUTTON | WS_TABSTOP, 406, 370, 137, 40, ID_START_TIMED);
     g_stop = make_control(0, L"BUTTON", L"停止运动", BS_PUSHBUTTON | WS_TABSTOP, 558, 370, 165, 40, ID_STOP);
 
@@ -1151,7 +1280,7 @@ static void create_ui(void)
     make_control(
         0,
         L"STATIC",
-        L"提示：定时模式采用控制器闭环速度；实际总时长需接入仪器后验证。",
+        L"提示：两种模式均使用位置传感器闭环控制；松开后的停止延迟需实机验证。",
         SS_LEFT,
         24, 527, 712, 26, 0);
 }
@@ -1265,6 +1394,9 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 if (!event->success) {
                     MessageBoxW(g_main_window, event->text, L"运动错误", MB_OK | MB_ICONERROR);
                 }
+            } else if (event->kind == UI_JOG_POSITION) {
+                swprintf(text, 320, L"当前位置：%d nm", event->position_nm);
+                SetWindowTextW(g_position, text);
             } else if (event->kind == UI_PROGRESS) {
                 swprintf(
                     text,

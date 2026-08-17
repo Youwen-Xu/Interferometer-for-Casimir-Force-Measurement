@@ -27,6 +27,12 @@ int main(void)
     check(fabs(plan.controller_duration_s - 5.0) < 1e-9, "exact duration");
 
     check(
+        motion_plan_create(100.0, 6.0, 1, &plan, error, 256),
+        "fractional average speed is accepted");
+    check(plan.speed_nm_s == 17U, "display speed rounds to nearest nm/s");
+    check(fabs(plan.controller_duration_s - 6.0) < 1e-9, "requested duration is preserved");
+
+    check(
         motion_plan_create(100.0, 5.0, -1, &plan, error, 256),
         "reverse plan is accepted");
     check(plan.signed_distance_nm == -100, "reverse sign");

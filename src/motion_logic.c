@@ -71,8 +71,7 @@ int motion_plan_create(
     plan->signed_distance_nm = direction * (int)rounded_distance;
     plan->speed_nm_s = (unsigned int)rounded_speed;
     plan->requested_duration_s = duration_s;
-    plan->controller_duration_s =
-        (double)rounded_distance / (double)rounded_speed;
+    plan->controller_duration_s = duration_s;
 
     if (error != NULL && error_capacity > 0) {
         error[0] = L'\0';
