@@ -24,6 +24,46 @@
 #endif
 #define AMETEK_RESPONSE_CAPACITY 2048U
 #define PI_VALUE 3.14159265358979323846
+#define HALF_PI_VALUE (PI_VALUE / 2.0)
+#define PHASE_TREND_EPSILON 1e-12
+#define PHASE_BOUNDARY_EPSILON 1e-9
+
+double ametek_calculate_folded_phase(
+    double r1,
+    double r2,
+    double k)
+{
+    double ratio;
+    double x;
+    double angle;
+
+    if (k == 0.0) {
+        return NAN;
+    }
+    ratio = r2 == 0.0 ? INFINITY : r1 / r2;
+    x = ratio / k;
+    if (x == 0.0) {
+        angle = HALF_PI_VALUE;
+    } else if (x > 0.0) {
+        angle = atan(1.0 / x);
+    } else {
+        angle = PI_VALUE + atan(1.0 / x);
+    }
+    if (angle > HALF_PI_VALUE) {
+        angle = PI_VALUE - angle;
+    }
+    return angle;
+}
+
+double ametek_phase_to_displacement(
+    double phase_rad,
+    double wavelength_nm)
+{
+    if (!isfinite(phase_rad) || wavelength_nm == 0.0) {
+        return NAN;
+    }
+    return phase_rad * wavelength_nm / (4.0 * PI_VALUE);
+}
 
 double ametek_calculate_displacement(
     double r1,
@@ -31,23 +71,74 @@ double ametek_calculate_displacement(
     double k,
     double wavelength_nm)
 {
-    double ratio;
-    double x;
-    double angle;
+    return ametek_phase_to_displacement(
+        ametek_calculate_folded_phase(r1, r2, k),
+        wavelength_nm);
+}
 
-    if (k == 0.0 || wavelength_nm == 0.0) {
+void ametek_phase_unwrapper_reset(AmetekPhaseUnwrapper *unwrapper)
+{
+    if (unwrapper != NULL) {
+        memset(unwrapper, 0, sizeof(*unwrapper));
+        unwrapper->branch_slope = 1;
+    }
+}
+
+double ametek_unwrap_phase(
+    AmetekPhaseUnwrapper *unwrapper,
+    double folded_phase_rad)
+{
+    double delta;
+    int trend;
+
+    if (unwrapper == NULL || !isfinite(folded_phase_rad) ||
+        folded_phase_rad < 0.0 || folded_phase_rad > HALF_PI_VALUE) {
         return NAN;
     }
-    ratio = r2 == 0.0 ? INFINITY : r1 / r2;
-    x = ratio / k;
-    if (x == 0.0) {
-        angle = PI_VALUE / 2.0;
-    } else if (x > 0.0) {
-        angle = atan(1.0 / x);
-    } else {
-        angle = PI_VALUE + atan(1.0 / x);
+    if (!unwrapper->initialized) {
+        unwrapper->initialized = 1;
+        unwrapper->branch_slope = 1;
+        unwrapper->previous_folded_phase_rad = folded_phase_rad;
+        unwrapper->unwrapped_phase_rad = folded_phase_rad;
+        return unwrapper->unwrapped_phase_rad;
     }
-    return angle * wavelength_nm / (4.0 * PI_VALUE);
+
+    delta = folded_phase_rad - unwrapper->previous_folded_phase_rad;
+    if (fabs(delta) <= PHASE_TREND_EPSILON) {
+        unwrapper->previous_folded_phase_rad = folded_phase_rad;
+        return unwrapper->unwrapped_phase_rad;
+    }
+    trend = delta > 0.0 ? 1 : -1;
+
+    if (unwrapper->folded_trend != 0 && trend != unwrapper->folded_trend) {
+        double boundary = unwrapper->previous_folded_phase_rad < HALF_PI_VALUE / 2.0
+            ? 0.0
+            : HALF_PI_VALUE;
+        double distance_to_boundary = fabs(
+            unwrapper->previous_folded_phase_rad - boundary);
+        double local_motion = fabs(unwrapper->previous_delta_rad) + fabs(delta);
+
+        if (distance_to_boundary <= local_motion + PHASE_BOUNDARY_EPSILON) {
+            int old_slope = unwrapper->branch_slope;
+            unwrapper->branch_slope = -old_slope;
+            unwrapper->unwrapped_phase_rad +=
+                (double)old_slope *
+                    (boundary - unwrapper->previous_folded_phase_rad) +
+                (double)unwrapper->branch_slope *
+                    (folded_phase_rad - boundary);
+        } else {
+            unwrapper->unwrapped_phase_rad +=
+                (double)unwrapper->branch_slope * delta;
+        }
+    } else {
+        unwrapper->unwrapped_phase_rad +=
+            (double)unwrapper->branch_slope * delta;
+    }
+
+    unwrapper->folded_trend = trend;
+    unwrapper->previous_delta_rad = delta;
+    unwrapper->previous_folded_phase_rad = folded_phase_rad;
+    return unwrapper->unwrapped_phase_rad;
 }
 
 int ametek_parse_response(
@@ -96,10 +187,12 @@ int ametek_parse_response(
     sample->r2 = values[6];
     sample->theta2 = values[7];
     sample->ratio = sample->r2 == 0.0 ? NAN : sample->r1 / sample->r2;
-    sample->displacement_nm = ametek_calculate_displacement(
+    sample->folded_phase_rad = ametek_calculate_folded_phase(
         sample->r1,
         sample->r2,
-        k,
+        k);
+    sample->displacement_nm = ametek_phase_to_displacement(
+        sample->folded_phase_rad,
         wavelength_nm);
     return 1;
 }
