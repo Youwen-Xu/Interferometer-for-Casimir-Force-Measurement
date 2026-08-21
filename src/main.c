@@ -145,6 +145,7 @@ enum ControlId {
     ID_AMETEK_START,
     ID_AMETEK_STOP,
     ID_AMETEK_SAVE,
+    ID_AMETEK_REVERSE,
     ID_PLOT_PAGE_1,
     ID_PLOT_PAGE_2,
     ID_PLOT_PAGE_3
@@ -188,6 +189,7 @@ static HWND g_ametek_lambda;
 static HWND g_ametek_start;
 static HWND g_ametek_stop;
 static HWND g_ametek_save;
+static HWND g_ametek_reverse;
 static HWND g_ametek_status;
 static HWND g_ametek_ch1;
 static HWND g_ametek_ch2;
@@ -217,6 +219,7 @@ static size_t g_ametek_sample_count;
 static size_t g_ametek_sample_capacity;
 static double g_ametek_r1_max;
 static double g_ametek_r2_max;
+static int g_displacement_reversed;
 static int g_plot_page;
 
 static enum AppState app_state(void)
@@ -227,6 +230,32 @@ static enum AppState app_state(void)
 static void set_app_state(enum AppState state)
 {
     InterlockedExchange(&g_state, (LONG)state);
+}
+
+static double displayed_displacement_nm(const AmetekSample *sample)
+{
+    return g_displacement_reversed
+        ? -sample->displacement_nm
+        : sample->displacement_nm;
+}
+
+static void update_displacement_direction_ui(void)
+{
+    wchar_t text[128];
+
+    SetWindowTextW(
+        g_ametek_reverse,
+        g_displacement_reversed ? L"反转：开" : L"反转：关");
+    if (g_ametek_sample_count == 0) {
+        SetWindowTextW(g_ametek_displacement, L"连续位移：— nm");
+        return;
+    }
+    swprintf(
+        text,
+        128,
+        L"连续位移：%.6f nm",
+        displayed_displacement_nm(&g_ametek_samples[g_ametek_sample_count - 1]));
+    SetWindowTextW(g_ametek_displacement, text);
 }
 
 static const wchar_t *nt_error_name(NT_STATUS status)
@@ -628,6 +657,7 @@ static void update_ametek_controls(void)
     EnableWindow(g_ametek_start, !running);
     EnableWindow(g_ametek_stop, running);
     EnableWindow(g_ametek_save, !running && g_ametek_sample_count > 0);
+    EnableWindow(g_ametek_reverse, running || g_ametek_sample_count > 0);
 }
 
 static DWORD WINAPI ametek_thread(LPVOID parameter)
@@ -635,6 +665,7 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
     AmetekArgs *args = (AmetekArgs *)parameter;
     AmetekClient client;
     AmetekSample sample;
+    AmetekPhaseUnwrapper phase_unwrapper;
     wchar_t error[256];
     ULONGLONG start_ms;
     ULONGLONG next_sample_ms;
@@ -648,6 +679,7 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
     }
     swprintf(status, 256, L"采集中：10 Hz，只读访问 %ls", args->host);
     post_ametek_event(AMETEK_EVENT_STATUS, 1, NULL, status);
+    ametek_phase_unwrapper_reset(&phase_unwrapper);
     start_ms = GetTickCount64();
     next_sample_ms = start_ms;
 
@@ -674,6 +706,12 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
                 &sample,
                 error,
                 256)) {
+            double unwrapped_phase = ametek_unwrap_phase(
+                &phase_unwrapper,
+                sample.folded_phase_rad);
+            sample.displacement_nm = ametek_phase_to_displacement(
+                unwrapped_phase,
+                args->wavelength_nm);
             consecutive_errors = 0;
             post_ametek_event(AMETEK_EVENT_SAMPLE, 1, &sample, NULL);
         } else {
@@ -1398,7 +1436,7 @@ static void reset_ametek_readouts(void)
     SetWindowTextW(g_ametek_ch1, L"CH1　X：—　Y：—　R1：—　θ1：—");
     SetWindowTextW(g_ametek_ch2, L"CH2　X：—　Y：—　R2：—　θ2：—");
     SetWindowTextW(g_ametek_ratio, L"R1/R2：—");
-    SetWindowTextW(g_ametek_displacement, L"干涉位移：— nm");
+    update_displacement_direction_ui();
     SetWindowTextW(g_ametek_maxima, L"最大值　R1：—　R2：—");
     SetWindowTextW(g_ametek_count, L"样本数：0");
 }
@@ -1466,6 +1504,7 @@ static void start_ametek_acquisition(void)
     args->k = k;
     args->wavelength_nm = wavelength_nm;
     clear_ametek_samples();
+    g_displacement_reversed = 0;
     reset_ametek_readouts();
     InvalidateRect(g_main_window, NULL, FALSE);
     ResetEvent(g_ametek_stop_event);
@@ -1533,7 +1572,7 @@ static void save_ametek_csv(void)
         show_error(L"无法创建 CSV 文件。");
         return;
     }
-    fputs("Time(s),X1,Y1,R1,Theta1(deg),X2,Y2,R2,Theta2(deg),R1/R2,Displacement(nm)\r\n", file);
+    fputs("Time(s),X1,Y1,R1,Theta1(deg),X2,Y2,R2,Theta2(deg),R1/R2,UnwrappedDisplacement(nm)\r\n", file);
     for (index = 0; index < g_ametek_sample_count; ++index) {
         const AmetekSample *sample = &g_ametek_samples[index];
         fprintf(
@@ -1549,7 +1588,7 @@ static void save_ametek_csv(void)
             sample->r2,
             sample->theta2,
             sample->ratio,
-            sample->displacement_nm);
+            displayed_displacement_nm(sample));
     }
     if (fclose(file) != 0) {
         show_error(L"CSV 文件写入未完整结束。");
@@ -1641,7 +1680,20 @@ static double plot_value(const AmetekSample *sample, enum PlotKind kind, int ser
     if (kind == PLOT_KIND_RATIO) {
         return sample->ratio;
     }
-    return sample->displacement_nm;
+    return displayed_displacement_nm(sample);
+}
+
+static void toggle_displacement_direction(void)
+{
+    RECT plot = {PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM};
+
+    if (g_ametek_sample_count == 0 &&
+        !InterlockedCompareExchange(&g_ametek_running, 0, 0)) {
+        return;
+    }
+    g_displacement_reversed = !g_displacement_reversed;
+    update_displacement_direction_ui();
+    InvalidateRect(g_main_window, &plot, FALSE);
 }
 
 static void draw_plot_series(
@@ -1882,7 +1934,9 @@ static void paint_ametek_plots(HWND window)
             dc,
             &bounds,
             PLOT_KIND_DISPLACEMENT,
-            L"第 3 页 / 3　干涉计算位移 (nm，未进行条纹展开)",
+            g_displacement_reversed
+                ? L"第 3 页 / 3　干涉连续位移 (nm，已展开 · 已反转)"
+                : L"第 3 页 / 3　干涉连续位移 (nm，已展开)",
             RGB(185, 45, 175),
             RGB(185, 45, 175));
     } else {
@@ -2050,7 +2104,7 @@ static void create_ui(void)
         0, L"STATIC", L"R1/R2：—", SS_LEFT,
         780, 340, 358, 25, 0);
     g_ametek_displacement = make_control(
-        0, L"STATIC", L"干涉位移：— nm", SS_LEFT,
+        0, L"STATIC", L"连续位移：— nm", SS_LEFT,
         780, 374, 358, 32, 0);
     set_control_font(g_ametek_displacement, g_arrow_font);
     g_ametek_maxima = make_control(
@@ -2062,7 +2116,7 @@ static void create_ui(void)
     make_control(
         0,
         L"STATIC",
-        L"说明：干涉位移按原脚本公式计算，\n未进行条纹展开；与编码器位置独立。",
+        L"说明：相位按 0 / π/2 边界连续展开；\n反转仅改显示方向，保存时统一写入。",
         SS_LEFT,
         780, 485, 358, 48, 0);
 
@@ -2084,12 +2138,15 @@ static void create_ui(void)
         0, L"BUTTON", L"3  位移", BS_AUTORADIOBUTTON | WS_TABSTOP,
         1054, 734, 94, 34, ID_PLOT_PAGE_3);
     SendMessageW(g_plot_page_buttons[0], BM_SETCHECK, BST_CHECKED, 0);
+    g_ametek_reverse = make_control(
+        0, L"BUTTON", L"反转：关", BS_PUSHBUTTON | WS_TABSTOP,
+        1054, 782, 94, 34, ID_AMETEK_REVERSE);
     make_control(
         0,
         L"STATIC",
         L"最近 200 点\n横轴：时间",
         SS_CENTER,
-        1054, 802, 94, 48, 0);
+        1054, 824, 94, 40, 0);
 }
 
 static int safe_to_close(void)
@@ -2185,6 +2242,9 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     return 0;
                 case ID_AMETEK_SAVE:
                     if (HIWORD(w_param) == BN_CLICKED) save_ametek_csv();
+                    return 0;
+                case ID_AMETEK_REVERSE:
+                    if (HIWORD(w_param) == BN_CLICKED) toggle_displacement_direction();
                     return 0;
                 case ID_PLOT_PAGE_1:
                 case ID_PLOT_PAGE_2:
@@ -2316,12 +2376,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                         swprintf(text, 384, L"R1/R2：不可计算（R2 为 0）");
                     }
                     SetWindowTextW(g_ametek_ratio, text);
-                    swprintf(
-                        text,
-                        384,
-                        L"干涉位移：%.6f nm",
-                        event->sample.displacement_nm);
-                    SetWindowTextW(g_ametek_displacement, text);
+                    update_displacement_direction_ui();
                     swprintf(
                         text,
                         384,
