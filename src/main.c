@@ -109,7 +109,7 @@ typedef struct TimedArgs {
 
 typedef struct AmetekArgs {
     wchar_t host[256];
-    double k;
+    AmetekCalibration calibration;
     double wavelength_nm;
 } AmetekArgs;
 
@@ -140,15 +140,15 @@ enum ControlId {
     ID_START_TIMED,
     ID_STOP,
     ID_AMETEK_HOST,
-    ID_AMETEK_K,
     ID_AMETEK_LAMBDA,
+    ID_AMETEK_AX_F,
+    ID_AMETEK_AY_F,
+    ID_AMETEK_AX_2F,
+    ID_AMETEK_AY_2F,
     ID_AMETEK_START,
     ID_AMETEK_STOP,
     ID_AMETEK_SAVE,
-    ID_AMETEK_REVERSE,
-    ID_PLOT_PAGE_1,
-    ID_PLOT_PAGE_2,
-    ID_PLOT_PAGE_3
+    ID_AMETEK_REVERSE
 };
 
 #define WM_APP_UI_EVENT (WM_APP + 1)
@@ -160,10 +160,17 @@ enum ControlId {
 #define POSITION_REFRESH_INTERVAL_MS 100U
 #define AMETEK_PLOT_MAX_POINTS 200U
 
+#define CONTENT_WIDTH 1240
+#define CONTENT_HEIGHT 1210
 #define PLOT_LEFT 20
-#define PLOT_TOP 570
-#define PLOT_RIGHT 1028
-#define PLOT_BOTTOM 870
+#define PLOT_RIGHT 1220
+#define SIGNAL_PLOT_RIGHT 1000
+#define PLOT_F_TOP 650
+#define PLOT_F_BOTTOM 810
+#define PLOT_2F_TOP 820
+#define PLOT_2F_BOTTOM 980
+#define PLOT_DISPLACEMENT_TOP 990
+#define PLOT_DISPLACEMENT_BOTTOM 1185
 
 static HINSTANCE g_instance;
 static HWND g_main_window;
@@ -184,23 +191,29 @@ static HWND g_motion_status;
 static HWND g_position;
 static HWND g_plan_summary;
 static HWND g_ametek_host;
-static HWND g_ametek_k;
 static HWND g_ametek_lambda;
+static HWND g_ametek_ax_f;
+static HWND g_ametek_ay_f;
+static HWND g_ametek_ax_2f;
+static HWND g_ametek_ay_2f;
 static HWND g_ametek_start;
 static HWND g_ametek_stop;
 static HWND g_ametek_save;
 static HWND g_ametek_reverse;
 static HWND g_ametek_status;
 static HWND g_ametek_ch1;
+static HWND g_ametek_f_peaks;
 static HWND g_ametek_ch2;
+static HWND g_ametek_2f_peaks;
 static HWND g_ametek_ratio;
 static HWND g_ametek_displacement;
 static HWND g_ametek_maxima;
 static HWND g_ametek_count;
-static HWND g_plot_page_buttons[3];
+static HWND g_ametek_quality;
 static HFONT g_font;
 static HFONT g_arrow_font;
 static HFONT g_title_font;
+static HBRUSH g_quality_brush;
 
 static DeviceApi g_api;
 static NT_INDEX g_system_index;
@@ -215,12 +228,20 @@ static volatile LONG g_ametek_running = 0;
 static HANDLE g_ametek_stop_event;
 static HANDLE g_ametek_worker;
 static AmetekSample *g_ametek_samples;
+static AmetekPeakToPeak g_ametek_peaks;
 static size_t g_ametek_sample_count;
 static size_t g_ametek_sample_capacity;
+static size_t g_ametek_low_count;
 static double g_ametek_r1_max;
 static double g_ametek_r2_max;
 static int g_displacement_reversed;
-static int g_plot_page;
+static int g_quality_state = AMETEK_QUALITY_INSUFFICIENT;
+static int g_scroll_x;
+static int g_scroll_y;
+static double g_active_wavelength_nm = 632.8;
+static AmetekCalibration g_active_calibration = {1.0, 1.0, 1.0, 1.0};
+
+static void set_quality_visual(enum AmetekQualityState state);
 
 static enum AppState app_state(void)
 {
@@ -247,13 +268,17 @@ static void update_displacement_direction_ui(void)
         g_ametek_reverse,
         g_displacement_reversed ? L"反转：开" : L"反转：关");
     if (g_ametek_sample_count == 0) {
-        SetWindowTextW(g_ametek_displacement, L"连续位移：— nm");
+        SetWindowTextW(g_ametek_displacement, L"相对位移：— nm");
+        return;
+    }
+    if (!isfinite(g_ametek_samples[g_ametek_sample_count - 1].displacement_nm)) {
+        SetWindowTextW(g_ametek_displacement, L"相对位移：当前点低置信度");
         return;
     }
     swprintf(
         text,
         128,
-        L"连续位移：%.6f nm",
+        L"相对位移：%.6f nm",
         displayed_displacement_nm(&g_ametek_samples[g_ametek_sample_count - 1]));
     SetWindowTextW(g_ametek_displacement, text);
 }
@@ -376,8 +401,65 @@ static void clear_ametek_samples(void)
     }
     g_ametek_sample_count = 0;
     g_ametek_sample_capacity = 0;
+    g_ametek_low_count = 0;
     g_ametek_r1_max = 0.0;
     g_ametek_r2_max = 0.0;
+    g_quality_state = AMETEK_QUALITY_INSUFFICIENT;
+    ametek_peak_to_peak_reset(&g_ametek_peaks);
+}
+
+static void bridge_recent_phase_gap(void)
+{
+    size_t latest;
+    size_t gap_start;
+    size_t previous;
+    size_t gap_count;
+    size_t index;
+    AmetekSample *before;
+    AmetekSample *after;
+    double duration;
+
+    if (g_ametek_sample_count < 3U) {
+        return;
+    }
+    latest = g_ametek_sample_count - 1U;
+    after = &g_ametek_samples[latest];
+    if (!after->phase_valid || after->phase_ambiguous) {
+        return;
+    }
+    gap_start = latest;
+    while (gap_start > 0U && !g_ametek_samples[gap_start - 1U].phase_valid) {
+        --gap_start;
+    }
+    gap_count = latest - gap_start;
+    if (gap_count == 0U ||
+        gap_count > AMETEK_MAX_INTERPOLATED_GAP_SAMPLES ||
+        gap_start == 0U) {
+        return;
+    }
+    previous = gap_start - 1U;
+    before = &g_ametek_samples[previous];
+    if (!before->phase_valid || !isfinite(before->unwrapped_phase_rad)) {
+        return;
+    }
+    duration = after->elapsed_s - before->elapsed_s;
+    if (duration <= 0.0) {
+        return;
+    }
+
+    for (index = gap_start; index < latest; ++index) {
+        AmetekSample *sample = &g_ametek_samples[index];
+        double fraction = (sample->elapsed_s - before->elapsed_s) / duration;
+        sample->unwrapped_phase_rad = before->unwrapped_phase_rad +
+            fraction * (after->unwrapped_phase_rad - before->unwrapped_phase_rad);
+        sample->relative_phase_rad = before->relative_phase_rad +
+            fraction * (after->relative_phase_rad - before->relative_phase_rad);
+        sample->displacement_nm = ametek_phase_to_displacement(
+            sample->relative_phase_rad,
+            g_active_wavelength_nm);
+        sample->phase_valid = 1;
+        sample->phase_interpolated = 1;
+    }
 }
 
 static int append_ametek_sample(const AmetekSample *sample)
@@ -410,6 +492,11 @@ static int append_ametek_sample(const AmetekSample *sample)
         g_ametek_sample_capacity = new_capacity;
     }
     g_ametek_samples[g_ametek_sample_count++] = *sample;
+    (void)ametek_peak_to_peak_update(&g_ametek_peaks, sample);
+    if (sample->low_radius) {
+        ++g_ametek_low_count;
+    }
+    bridge_recent_phase_gap();
     if (g_ametek_sample_count == 1 || sample->r1 > g_ametek_r1_max) {
         g_ametek_r1_max = sample->r1;
     }
@@ -652,8 +739,11 @@ static void update_ametek_controls(void)
     BOOL running = InterlockedCompareExchange(&g_ametek_running, 0, 0) != 0;
 
     EnableWindow(g_ametek_host, !running);
-    EnableWindow(g_ametek_k, !running);
     EnableWindow(g_ametek_lambda, !running);
+    EnableWindow(g_ametek_ax_f, !running);
+    EnableWindow(g_ametek_ay_f, !running);
+    EnableWindow(g_ametek_ax_2f, !running);
+    EnableWindow(g_ametek_ay_2f, !running);
     EnableWindow(g_ametek_start, !running);
     EnableWindow(g_ametek_stop, running);
     EnableWindow(g_ametek_save, !running && g_ametek_sample_count > 0);
@@ -665,7 +755,7 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
     AmetekArgs *args = (AmetekArgs *)parameter;
     AmetekClient client;
     AmetekSample sample;
-    AmetekPhaseUnwrapper phase_unwrapper;
+    AmetekPhaseTracker phase_tracker;
     wchar_t error[256];
     ULONGLONG start_ms;
     ULONGLONG next_sample_ms;
@@ -679,7 +769,7 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
     }
     swprintf(status, 256, L"采集中：10 Hz，只读访问 %ls", args->host);
     post_ametek_event(AMETEK_EVENT_STATUS, 1, NULL, status);
-    ametek_phase_unwrapper_reset(&phase_unwrapper);
+    ametek_phase_tracker_reset(&phase_tracker);
     start_ms = GetTickCount64();
     next_sample_ms = start_ms;
 
@@ -701,19 +791,23 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
         if (ametek_client_fetch(
                 &client,
                 (double)(now_ms - start_ms) / 1000.0,
-                args->k,
-                args->wavelength_nm,
                 &sample,
                 error,
                 256)) {
-            double unwrapped_phase = ametek_unwrap_phase(
-                &phase_unwrapper,
-                sample.folded_phase_rad);
-            sample.displacement_nm = ametek_phase_to_displacement(
-                unwrapped_phase,
-                args->wavelength_nm);
-            consecutive_errors = 0;
-            post_ametek_event(AMETEK_EVENT_SAMPLE, 1, &sample, NULL);
+            if (ametek_process_sample(
+                    &sample,
+                    &args->calibration,
+                    &phase_tracker,
+                    args->wavelength_nm)) {
+                consecutive_errors = 0;
+                post_ametek_event(AMETEK_EVENT_SAMPLE, 1, &sample, NULL);
+            } else {
+                post_ametek_event(
+                    AMETEK_EVENT_STATUS,
+                    0,
+                    NULL,
+                    L"相位恢复参数无效，当前样本已跳过");
+            }
         } else {
             ++consecutive_errors;
             if (consecutive_errors == 1U || consecutive_errors % 10U == 0U) {
@@ -1433,18 +1527,120 @@ static void finish_ametek_worker_handle(void)
 
 static void reset_ametek_readouts(void)
 {
-    SetWindowTextW(g_ametek_ch1, L"CH1　X：—　Y：—　R1：—　θ1：—");
-    SetWindowTextW(g_ametek_ch2, L"CH2　X：—　Y：—　R2：—　θ2：—");
-    SetWindowTextW(g_ametek_ratio, L"R1/R2：—");
+    SetWindowTextW(g_ametek_ch1, L"f　　Xf：—　Yf：—");
+    SetWindowTextW(g_ametek_f_peaks, L"Xf：—\nYf：—");
+    SetWindowTextW(g_ametek_ch2, L"2f　 X2f：—　Y2f：—");
+    SetWindowTextW(g_ametek_2f_peaks, L"X2f：—\nY2f：—");
+    SetWindowTextW(g_ametek_ratio, L"相位：—　半径：—");
     update_displacement_direction_ui();
-    SetWindowTextW(g_ametek_maxima, L"最大值　R1：—　R2：—");
+    SetWindowTextW(g_ametek_maxima, L"低幅值点：—");
     SetWindowTextW(g_ametek_count, L"样本数：0");
+    SetWindowTextW(
+        g_ametek_quality,
+        L"振幅标定检查：等待足够的相位变化数据…");
+    set_quality_visual(AMETEK_QUALITY_INSUFFICIENT);
+}
+
+static void set_quality_visual(enum AmetekQualityState state)
+{
+    COLORREF color;
+
+    g_quality_state = (int)state;
+    if (state == AMETEK_QUALITY_GOOD) {
+        color = RGB(225, 247, 234);
+    } else if (state == AMETEK_QUALITY_WARNING) {
+        color = RGB(255, 247, 214);
+    } else if (state == AMETEK_QUALITY_BAD) {
+        color = RGB(255, 226, 226);
+    } else {
+        color = RGB(235, 241, 248);
+    }
+    if (g_quality_brush != NULL) {
+        DeleteObject(g_quality_brush);
+    }
+    g_quality_brush = CreateSolidBrush(color);
+    if (g_ametek_quality != NULL) {
+        InvalidateRect(g_ametek_quality, NULL, TRUE);
+    }
+}
+
+static void update_ametek_quality_ui(void)
+{
+    AmetekQualityMetrics metrics;
+    size_t first = g_ametek_sample_count > AMETEK_PLOT_MAX_POINTS
+        ? g_ametek_sample_count - AMETEK_PLOT_MAX_POINTS
+        : 0U;
+    const AmetekSample *samples = g_ametek_sample_count > 0U
+        ? &g_ametek_samples[first]
+        : NULL;
+    size_t count = g_ametek_sample_count - first;
+    wchar_t text[512];
+    double phase_error_deg;
+
+    ametek_assess_calibration(
+        samples,
+        count,
+        &g_active_calibration,
+        &metrics);
+    set_quality_visual(metrics.state);
+    phase_error_deg = isfinite(metrics.estimated_phase_error_rad)
+        ? metrics.estimated_phase_error_rad * 180.0 / 3.14159265358979323846
+        : NAN;
+
+    if (metrics.state == AMETEK_QUALITY_GOOD) {
+        swprintf(
+            text,
+            512,
+            L"振幅标定正常：相对比例一致，估计最大 Φ 误差 %.2f°\n"
+            L"f / 2f 一致性误差 %.1f%% / %.1f%%　低幅值 %.1f%%",
+            phase_error_deg,
+            metrics.f_consistency_error * 100.0,
+            metrics.two_f_consistency_error * 100.0,
+            metrics.low_radius_fraction * 100.0);
+    } else if (metrics.state == AMETEK_QUALITY_WARNING) {
+        swprintf(
+            text,
+            512,
+            L"请复核四个振幅：估计最大 Φ 误差 %.2f°，建议微调大小或符号。\n"
+            L"f / 2f 一致性误差 %.1f%% / %.1f%%　低幅值 %.1f%%",
+            phase_error_deg,
+            metrics.f_consistency_error * 100.0,
+            metrics.two_f_consistency_error * 100.0,
+            metrics.low_radius_fraction * 100.0);
+    } else if (metrics.state == AMETEK_QUALITY_BAD) {
+        if (isfinite(phase_error_deg)) {
+            swprintf(
+                text,
+                512,
+                L"当前输入的四个振幅使 Φ 误差过大，请调整输入值后重新采集。\n"
+                L"估计最大误差 %.2f°　f / 2f 一致性 %.1f%% / %.1f%%　低幅值 %.1f%%",
+                phase_error_deg,
+                metrics.f_consistency_error * 100.0,
+                metrics.two_f_consistency_error * 100.0,
+                metrics.low_radius_fraction * 100.0);
+        } else {
+            swprintf(
+                text,
+                512,
+                L"当前输入的四个振幅无法得到可靠 Φ，请调整大小或符号。\n"
+                L"低幅值点 %.1f%%；当前归一化轨迹无法可靠拟合为圆。",
+                metrics.low_radius_fraction * 100.0);
+        }
+    } else {
+        swprintf(
+            text,
+            512,
+            L"振幅标定检查：数据覆盖不足，暂时不能判断四振幅是否正确。\n"
+            L"请继续采集，使相位轨迹至少覆盖三个象限（当前 %llu 点）。",
+            (unsigned long long)count);
+    }
+    SetWindowTextW(g_ametek_quality, text);
 }
 
 static void start_ametek_acquisition(void)
 {
     AmetekArgs *args;
-    double k;
+    AmetekCalibration calibration;
     double wavelength_nm;
     wchar_t host[256];
     wchar_t *host_start;
@@ -1477,8 +1673,14 @@ static void start_ametek_acquisition(void)
         show_error(L"7270 IP 中只输入 IP 地址或主机名，不要包含 http://、端口或路径。");
         return;
     }
-    if (!parse_double_control(g_ametek_k, &k) || k == 0.0) {
-        show_error(L"k 必须是非零有限数值。");
+    if (!parse_double_control(g_ametek_ax_f, &calibration.ax_f) ||
+        !parse_double_control(g_ametek_ay_f, &calibration.ay_f) ||
+        !parse_double_control(g_ametek_ax_2f, &calibration.ax_2f) ||
+        !parse_double_control(g_ametek_ay_2f, &calibration.ay_2f) ||
+        !ametek_calibration_is_valid(&calibration)) {
+        show_error(
+            L"四个振幅必须是有限数值，并且 f 与 2f 两组都至少有一个非零振幅。\n"
+            L"振幅允许输入负数；默认值均为 1。");
         return;
     }
     if (!parse_double_control(g_ametek_lambda, &wavelength_nm) || wavelength_nm <= 0.0) {
@@ -1501,8 +1703,10 @@ static void start_ametek_acquisition(void)
     }
     wcsncpy(args->host, host, 255);
     args->host[255] = L'\0';
-    args->k = k;
+    args->calibration = calibration;
     args->wavelength_nm = wavelength_nm;
+    g_active_calibration = calibration;
+    g_active_wavelength_nm = wavelength_nm;
     clear_ametek_samples();
     g_displacement_reversed = 0;
     reset_ametek_readouts();
@@ -1572,12 +1776,17 @@ static void save_ametek_csv(void)
         show_error(L"无法创建 CSV 文件。");
         return;
     }
-    fputs("Time(s),X1,Y1,R1,Theta1(deg),X2,Y2,R2,Theta2(deg),R1/R2,UnwrappedDisplacement(nm)\r\n", file);
+    fputs(
+        "Time(s),Xf,Yf,Rf,ThetaF(deg),X2f,Y2f,R2f,Theta2F(deg),"
+        "SinPhi,CosPhi,PhasorRadius,WrappedPhi(rad),UnwrappedPhi(rad),"
+        "RelativePhi(rad),PhaseValid,Interpolated,Ambiguous,RelativeDisplacement(nm)\r\n",
+        file);
     for (index = 0; index < g_ametek_sample_count; ++index) {
         const AmetekSample *sample = &g_ametek_samples[index];
         fprintf(
             file,
-            "%.6f,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\r\n",
+            "%.6f,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,"
+            "%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%d,%d,%d,%.9g\r\n",
             sample->elapsed_s,
             sample->x1,
             sample->y1,
@@ -1587,7 +1796,15 @@ static void save_ametek_csv(void)
             sample->y2,
             sample->r2,
             sample->theta2,
-            sample->ratio,
+            sample->sine_component,
+            sample->cosine_component,
+            sample->phasor_radius,
+            sample->wrapped_phase_rad,
+            sample->unwrapped_phase_rad,
+            sample->relative_phase_rad,
+            sample->phase_valid,
+            sample->phase_interpolated,
+            sample->phase_ambiguous,
             displayed_displacement_nm(sample));
     }
     if (fclose(file) != 0) {
@@ -1667,33 +1884,46 @@ static LRESULT CALLBACK arrow_subclass_proc(
 }
 
 enum PlotKind {
-    PLOT_KIND_R = 1,
-    PLOT_KIND_RATIO,
+    PLOT_KIND_F_XY = 1,
+    PLOT_KIND_2F_XY,
     PLOT_KIND_DISPLACEMENT
 };
 
 static double plot_value(const AmetekSample *sample, enum PlotKind kind, int series)
 {
-    if (kind == PLOT_KIND_R) {
-        return series == 0 ? sample->r1 : sample->r2;
+    if (kind == PLOT_KIND_F_XY) {
+        return series == 0 ? sample->x1 : sample->y1;
     }
-    if (kind == PLOT_KIND_RATIO) {
-        return sample->ratio;
+    if (kind == PLOT_KIND_2F_XY) {
+        return series == 0 ? sample->x2 : sample->y2;
     }
     return displayed_displacement_nm(sample);
 }
 
+static void set_scrolled_rect(
+    RECT *rect,
+    int left,
+    int top,
+    int right,
+    int bottom)
+{
+    SetRect(
+        rect,
+        left - g_scroll_x,
+        top - g_scroll_y,
+        right - g_scroll_x,
+        bottom - g_scroll_y);
+}
+
 static void toggle_displacement_direction(void)
 {
-    RECT plot = {PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM};
-
     if (g_ametek_sample_count == 0 &&
         !InterlockedCompareExchange(&g_ametek_running, 0, 0)) {
         return;
     }
     g_displacement_reversed = !g_displacement_reversed;
     update_displacement_direction_ui();
-    InvalidateRect(g_main_window, &plot, FALSE);
+    InvalidateRect(g_main_window, NULL, FALSE);
 }
 
 static void draw_plot_series(
@@ -1763,7 +1993,7 @@ static void draw_plot_contents(
     HBRUSH background;
     size_t first;
     size_t index;
-    int series_count = kind == PLOT_KIND_R ? 2 : 1;
+    int series_count = kind == PLOT_KIND_DISPLACEMENT ? 1 : 2;
     int series;
     int has_value = 0;
     double value_min = DBL_MAX;
@@ -1863,6 +2093,8 @@ static void draw_plot_contents(
         value_max,
         first_color);
     if (series_count == 2) {
+        const wchar_t *first_name = kind == PLOT_KIND_F_XY ? L"Xf" : L"X2f";
+        const wchar_t *second_name = kind == PLOT_KIND_F_XY ? L"Yf" : L"Y2f";
         draw_plot_series(
             dc,
             &graph,
@@ -1876,9 +2108,19 @@ static void draw_plot_contents(
             value_max,
             second_color);
         SetTextColor(dc, first_color);
-        TextOutW(dc, bounds->right - bounds->left - 92, 4, L"R1", 2);
+        TextOutW(
+            dc,
+            bounds->right - bounds->left - 112,
+            4,
+            first_name,
+            (int)wcslen(first_name));
         SetTextColor(dc, second_color);
-        TextOutW(dc, bounds->right - bounds->left - 52, 4, L"R2", 2);
+        TextOutW(
+            dc,
+            bounds->right - bounds->left - 58,
+            4,
+            second_name,
+            (int)wcslen(second_name));
     }
     SelectObject(dc, old_font);
 }
@@ -1920,34 +2162,49 @@ static void paint_ametek_plots(HWND window)
     HDC dc = BeginPaint(window, &paint);
     RECT bounds;
 
-    SetRect(&bounds, PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM);
-    if (g_plot_page == 1) {
-        draw_plot_buffered(
-            dc,
-            &bounds,
-            PLOT_KIND_RATIO,
-            L"第 2 页 / 3　幅值比：R1 / R2",
-            RGB(25, 145, 80),
-            RGB(25, 145, 80));
-    } else if (g_plot_page == 2) {
-        draw_plot_buffered(
-            dc,
-            &bounds,
-            PLOT_KIND_DISPLACEMENT,
-            g_displacement_reversed
-                ? L"第 3 页 / 3　干涉连续位移 (nm，已展开 · 已反转)"
-                : L"第 3 页 / 3　干涉连续位移 (nm，已展开)",
-            RGB(185, 45, 175),
-            RGB(185, 45, 175));
-    } else {
-        draw_plot_buffered(
-            dc,
-            &bounds,
-            PLOT_KIND_R,
-            L"第 1 页 / 3　Ametek 幅值：R1 / R2",
-            RGB(30, 100, 220),
-            RGB(220, 55, 55));
-    }
+    set_scrolled_rect(
+        &bounds,
+        PLOT_LEFT,
+        PLOT_F_TOP,
+        SIGNAL_PLOT_RIGHT,
+        PLOT_F_BOTTOM);
+    draw_plot_buffered(
+        dc,
+        &bounds,
+        PLOT_KIND_F_XY,
+        L"一次谐波 f：Xf 与 Yf（最近 200 点）",
+        RGB(30, 100, 220),
+        RGB(220, 70, 55));
+
+    set_scrolled_rect(
+        &bounds,
+        PLOT_LEFT,
+        PLOT_2F_TOP,
+        SIGNAL_PLOT_RIGHT,
+        PLOT_2F_BOTTOM);
+    draw_plot_buffered(
+        dc,
+        &bounds,
+        PLOT_KIND_2F_XY,
+        L"二次谐波 2f：X2f 与 Y2f（与上图时间轴对齐）",
+        RGB(20, 145, 105),
+        RGB(210, 120, 25));
+
+    set_scrolled_rect(
+        &bounds,
+        PLOT_LEFT,
+        PLOT_DISPLACEMENT_TOP,
+        PLOT_RIGHT,
+        PLOT_DISPLACEMENT_BOTTOM);
+    draw_plot_buffered(
+        dc,
+        &bounds,
+        PLOT_KIND_DISPLACEMENT,
+        g_displacement_reversed
+            ? L"连续相对位移 (nm，atan2 展开 · 已反转)"
+            : L"连续相对位移 (nm，atan2 展开)",
+        RGB(175, 55, 175),
+        RGB(175, 55, 175));
     EndPaint(window, &paint);
 }
 
@@ -2058,7 +2315,12 @@ static void create_ui(void)
         SS_LEFT,
         24, 527, 712, 26, 0);
 
-    group = make_control(0, L"BUTTON", L" Ametek 7270 干涉读出 ", BS_GROUPBOX, 760, 84, 400, 469, 0);
+    group = make_control(
+        0,
+        L"BUTTON",
+        L" Ametek 7270 · PGC 相位与位移 ",
+        BS_GROUPBOX,
+        760, 84, 460, 486, 0);
     (void)group;
     make_control(0, L"STATIC", L"7270 IP", SS_LEFT, 780, 115, 62, 25, 0);
     g_ametek_host = make_control(
@@ -2067,86 +2329,236 @@ static void create_ui(void)
         L"169.254.1.100",
         ES_AUTOHSCROLL | WS_TABSTOP,
         846, 111, 188, 29, ID_AMETEK_HOST);
-    make_control(0, L"STATIC", L"采样：10 Hz", SS_LEFT, 1044, 115, 94, 25, 0);
-    make_control(0, L"STATIC", L"k", SS_LEFT, 780, 151, 18, 25, 0);
-    g_ametek_k = make_control(
-        WS_EX_CLIENTEDGE,
-        L"EDIT",
-        L"1",
-        ES_AUTOHSCROLL | WS_TABSTOP,
-        804, 147, 82, 29, ID_AMETEK_K);
-    make_control(0, L"STATIC", L"λ (nm)", SS_LEFT, 906, 151, 58, 25, 0);
+    make_control(0, L"STATIC", L"λ (nm)", SS_LEFT, 1046, 115, 58, 25, 0);
     g_ametek_lambda = make_control(
         WS_EX_CLIENTEDGE,
         L"EDIT",
         L"632.8",
         ES_AUTOHSCROLL | WS_TABSTOP,
-        968, 147, 86, 29, ID_AMETEK_LAMBDA);
-    g_ametek_start = make_control(
-        0, L"BUTTON", L"开始采集", BS_PUSHBUTTON | WS_TABSTOP,
-        780, 190, 108, 35, ID_AMETEK_START);
-    g_ametek_stop = make_control(
-        0, L"BUTTON", L"停止采集", BS_PUSHBUTTON | WS_TABSTOP,
-        900, 190, 108, 35, ID_AMETEK_STOP);
-    g_ametek_save = make_control(
-        0, L"BUTTON", L"保存 CSV", BS_PUSHBUTTON | WS_TABSTOP,
-        1020, 190, 118, 35, ID_AMETEK_SAVE);
-    g_ametek_status = make_control(
-        0, L"STATIC", L"状态：尚未开始采集", SS_LEFT,
-        780, 238, 358, 25, 0);
-    g_ametek_ch1 = make_control(
-        0, L"STATIC", L"CH1　X：—　Y：—　R1：—　θ1：—", SS_LEFT,
-        780, 272, 358, 25, 0);
-    g_ametek_ch2 = make_control(
-        0, L"STATIC", L"CH2　X：—　Y：—　R2：—　θ2：—", SS_LEFT,
-        780, 304, 358, 25, 0);
-    g_ametek_ratio = make_control(
-        0, L"STATIC", L"R1/R2：—", SS_LEFT,
-        780, 340, 358, 25, 0);
-    g_ametek_displacement = make_control(
-        0, L"STATIC", L"连续位移：— nm", SS_LEFT,
-        780, 374, 358, 32, 0);
-    set_control_font(g_ametek_displacement, g_arrow_font);
-    g_ametek_maxima = make_control(
-        0, L"STATIC", L"最大值　R1：—　R2：—", SS_LEFT,
-        780, 416, 358, 25, 0);
-    g_ametek_count = make_control(
-        0, L"STATIC", L"样本数：0", SS_LEFT,
-        780, 447, 358, 25, 0);
+        1106, 111, 90, 29, ID_AMETEK_LAMBDA);
+
     make_control(
         0,
         L"STATIC",
-        L"说明：相位按 0 / π/2 边界连续展开；\n反转仅改显示方向，保存时统一写入。",
+        L"四个带符号振幅（对应 X/Y 信号中 sinΦ 或 cosΦ 前的系数）",
         SS_LEFT,
-        780, 485, 358, 48, 0);
+        780, 153, 416, 25, 0);
+    make_control(0, L"STATIC", L"Xf 振幅", SS_LEFT, 780, 186, 70, 25, 0);
+    g_ametek_ax_f = make_control(
+        WS_EX_CLIENTEDGE, L"EDIT", L"1", ES_AUTOHSCROLL | WS_TABSTOP,
+        850, 182, 116, 29, ID_AMETEK_AX_F);
+    make_control(0, L"STATIC", L"Yf 振幅", SS_LEFT, 986, 186, 70, 25, 0);
+    g_ametek_ay_f = make_control(
+        WS_EX_CLIENTEDGE, L"EDIT", L"1", ES_AUTOHSCROLL | WS_TABSTOP,
+        1056, 182, 140, 29, ID_AMETEK_AY_F);
+    make_control(0, L"STATIC", L"X2f 振幅", SS_LEFT, 780, 222, 76, 25, 0);
+    g_ametek_ax_2f = make_control(
+        WS_EX_CLIENTEDGE, L"EDIT", L"1", ES_AUTOHSCROLL | WS_TABSTOP,
+        856, 218, 110, 29, ID_AMETEK_AX_2F);
+    make_control(0, L"STATIC", L"Y2f 振幅", SS_LEFT, 986, 222, 76, 25, 0);
+    g_ametek_ay_2f = make_control(
+        WS_EX_CLIENTEDGE, L"EDIT", L"1", ES_AUTOHSCROLL | WS_TABSTOP,
+        1062, 218, 134, 29, ID_AMETEK_AY_2F);
+    make_control(
+        0,
+        L"STATIC",
+        L"允许负数；f 与 2f 两组各至少一个非零。采集时输入项会锁定。",
+        SS_LEFT,
+        780, 252, 416, 24, 0);
+
+    g_ametek_start = make_control(
+        0, L"BUTTON", L"开始采集", BS_PUSHBUTTON | WS_TABSTOP,
+        780, 281, 96, 34, ID_AMETEK_START);
+    g_ametek_stop = make_control(
+        0, L"BUTTON", L"停止采集", BS_PUSHBUTTON | WS_TABSTOP,
+        886, 281, 96, 34, ID_AMETEK_STOP);
+    g_ametek_save = make_control(
+        0, L"BUTTON", L"保存 CSV", BS_PUSHBUTTON | WS_TABSTOP,
+        992, 281, 96, 34, ID_AMETEK_SAVE);
+    g_ametek_reverse = make_control(
+        0, L"BUTTON", L"反转：关", BS_PUSHBUTTON | WS_TABSTOP,
+        1098, 281, 98, 34, ID_AMETEK_REVERSE);
+    g_ametek_status = make_control(
+        0, L"STATIC", L"状态：尚未开始采集（10 Hz）", SS_LEFT,
+        780, 323, 416, 25, 0);
+    g_ametek_ch1 = make_control(
+        0, L"STATIC", L"f　　Xf：—　Yf：—", SS_LEFT,
+        780, 351, 416, 25, 0);
+    g_ametek_ch2 = make_control(
+        0, L"STATIC", L"2f　 X2f：—　Y2f：—", SS_LEFT,
+        780, 377, 416, 25, 0);
+    g_ametek_ratio = make_control(
+        0, L"STATIC", L"相位：—　半径：—", SS_LEFT,
+        780, 403, 416, 25, 0);
+    g_ametek_displacement = make_control(
+        0, L"STATIC", L"相对位移：— nm", SS_LEFT,
+        780, 430, 416, 34, 0);
+    set_control_font(g_ametek_displacement, g_arrow_font);
+    g_ametek_quality = make_control(
+        WS_EX_CLIENTEDGE,
+        L"STATIC",
+        L"振幅标定检查：等待足够的相位变化数据…",
+        SS_LEFT,
+        780, 466, 416, 72, 0);
+    set_quality_visual(AMETEK_QUALITY_INSUFFICIENT);
+    g_ametek_maxima = make_control(
+        0, L"STATIC", L"低幅值点：—", SS_LEFT,
+        780, 542, 200, 24, 0);
+    g_ametek_count = make_control(
+        0, L"STATIC", L"样本数：0", SS_RIGHT,
+        990, 542, 206, 24, 0);
 
     group = make_control(
         0,
         L"BUTTON",
-        L" 图表页 ",
+        L" 一次谐波峰峰值 ",
         BS_GROUPBOX,
-        1042, 570, 118, 300, 0);
+        1010, PLOT_F_TOP, 210, PLOT_F_BOTTOM - PLOT_F_TOP, 0);
     (void)group;
-    make_control(0, L"STATIC", L"选择当前页", SS_CENTER, 1054, 600, 94, 24, 0);
-    g_plot_page_buttons[0] = make_control(
-        0, L"BUTTON", L"1  幅值", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,
-        1054, 638, 94, 34, ID_PLOT_PAGE_1);
-    g_plot_page_buttons[1] = make_control(
-        0, L"BUTTON", L"2  比值", BS_AUTORADIOBUTTON | WS_TABSTOP,
-        1054, 686, 94, 34, ID_PLOT_PAGE_2);
-    g_plot_page_buttons[2] = make_control(
-        0, L"BUTTON", L"3  位移", BS_AUTORADIOBUTTON | WS_TABSTOP,
-        1054, 734, 94, 34, ID_PLOT_PAGE_3);
-    SendMessageW(g_plot_page_buttons[0], BM_SETCHECK, BST_CHECKED, 0);
-    g_ametek_reverse = make_control(
-        0, L"BUTTON", L"反转：关", BS_PUSHBUTTON | WS_TABSTOP,
-        1054, 782, 94, 34, ID_AMETEK_REVERSE);
+    g_ametek_f_peaks = make_control(
+        0,
+        L"STATIC",
+        L"Xf：—\nYf：—",
+        SS_LEFT,
+        1028, PLOT_F_TOP + 42, 172, 56, 0);
     make_control(
         0,
         L"STATIC",
-        L"最近 200 点\n横轴：时间",
+        L"当前整轮采集\n最大值 − 最小值",
         SS_CENTER,
-        1054, 824, 94, 40, 0);
+        1028, PLOT_F_TOP + 105, 172, 42, 0);
+
+    group = make_control(
+        0,
+        L"BUTTON",
+        L" 二次谐波峰峰值 ",
+        BS_GROUPBOX,
+        1010, PLOT_2F_TOP, 210, PLOT_2F_BOTTOM - PLOT_2F_TOP, 0);
+    (void)group;
+    g_ametek_2f_peaks = make_control(
+        0,
+        L"STATIC",
+        L"X2f：—\nY2f：—",
+        SS_LEFT,
+        1028, PLOT_2F_TOP + 42, 172, 56, 0);
+    make_control(
+        0,
+        L"STATIC",
+        L"当前整轮采集\n最大值 − 最小值",
+        SS_CENTER,
+        1028, PLOT_2F_TOP + 105, 172, 42, 0);
+}
+
+static void scroll_content_to(HWND window, int new_x, int new_y)
+{
+    int old_x = g_scroll_x;
+    int old_y = g_scroll_y;
+    SCROLLINFO info;
+
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = SIF_POS;
+    info.nPos = new_x;
+    SetScrollInfo(window, SB_HORZ, &info, TRUE);
+    g_scroll_x = GetScrollPos(window, SB_HORZ);
+
+    info.nPos = new_y;
+    SetScrollInfo(window, SB_VERT, &info, TRUE);
+    g_scroll_y = GetScrollPos(window, SB_VERT);
+
+    if (old_x != g_scroll_x || old_y != g_scroll_y) {
+        ScrollWindowEx(
+            window,
+            old_x - g_scroll_x,
+            old_y - g_scroll_y,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
+        UpdateWindow(window);
+    }
+}
+
+static void update_scrollbars(HWND window)
+{
+    RECT client;
+    SCROLLINFO info;
+    int old_x = g_scroll_x;
+    int old_y = g_scroll_y;
+
+    GetClientRect(window, &client);
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+    info.nMin = 0;
+    info.nMax = CONTENT_WIDTH - 1;
+    info.nPage = (UINT)(client.right - client.left);
+    info.nPos = g_scroll_x;
+    SetScrollInfo(window, SB_HORZ, &info, TRUE);
+    g_scroll_x = GetScrollPos(window, SB_HORZ);
+
+    info.nMax = CONTENT_HEIGHT - 1;
+    info.nPage = (UINT)(client.bottom - client.top);
+    info.nPos = g_scroll_y;
+    SetScrollInfo(window, SB_VERT, &info, TRUE);
+    g_scroll_y = GetScrollPos(window, SB_VERT);
+
+    if (old_x != g_scroll_x || old_y != g_scroll_y) {
+        ScrollWindowEx(
+            window,
+            old_x - g_scroll_x,
+            old_y - g_scroll_y,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
+    }
+    InvalidateRect(window, NULL, FALSE);
+}
+
+static void handle_scroll(HWND window, int bar, int request)
+{
+    SCROLLINFO info;
+    int position;
+
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = SIF_ALL;
+    GetScrollInfo(window, bar, &info);
+    position = info.nPos;
+    switch (request) {
+        case SB_LINEUP:
+            position -= 30;
+            break;
+        case SB_LINEDOWN:
+            position += 30;
+            break;
+        case SB_PAGEUP:
+            position -= (int)info.nPage;
+            break;
+        case SB_PAGEDOWN:
+            position += (int)info.nPage;
+            break;
+        case SB_THUMBTRACK:
+        case SB_THUMBPOSITION:
+            position = info.nTrackPos;
+            break;
+        case SB_TOP:
+            position = info.nMin;
+            break;
+        case SB_BOTTOM:
+            position = info.nMax;
+            break;
+        default:
+            return;
+    }
+    if (bar == SB_HORZ) {
+        scroll_content_to(window, position, g_scroll_y);
+    } else {
+        scroll_content_to(window, g_scroll_x, position);
+    }
 }
 
 static int safe_to_close(void)
@@ -2204,6 +2616,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             create_ui();
             update_controls();
             update_ametek_controls();
+            update_scrollbars(window);
             if (SetTimer(
                     window,
                     POSITION_REFRESH_TIMER_ID,
@@ -2212,6 +2625,40 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 SetWindowTextW(g_position, L"位移台编码器位置：刷新定时器启动失败");
             }
             return 0;
+
+        case WM_SIZE:
+            update_scrollbars(window);
+            return 0;
+
+        case WM_GETMINMAXINFO:
+        {
+            MINMAXINFO *limits = (MINMAXINFO *)l_param;
+            limits->ptMinTrackSize.x = 760;
+            limits->ptMinTrackSize.y = 620;
+            return 0;
+        }
+
+        case WM_HSCROLL:
+            if (l_param == 0) {
+                handle_scroll(window, SB_HORZ, LOWORD(w_param));
+                return 0;
+            }
+            break;
+
+        case WM_VSCROLL:
+            if (l_param == 0) {
+                handle_scroll(window, SB_VERT, LOWORD(w_param));
+                return 0;
+            }
+            break;
+
+        case WM_MOUSEWHEEL:
+        {
+            int wheel_delta = GET_WHEEL_DELTA_WPARAM(w_param);
+            int steps = wheel_delta / WHEEL_DELTA;
+            scroll_content_to(window, g_scroll_x, g_scroll_y - steps * 90);
+            return 0;
+        }
 
         case WM_TIMER:
             if (w_param == POSITION_REFRESH_TIMER_ID) {
@@ -2245,15 +2692,6 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     return 0;
                 case ID_AMETEK_REVERSE:
                     if (HIWORD(w_param) == BN_CLICKED) toggle_displacement_direction();
-                    return 0;
-                case ID_PLOT_PAGE_1:
-                case ID_PLOT_PAGE_2:
-                case ID_PLOT_PAGE_3:
-                    if (HIWORD(w_param) == BN_CLICKED) {
-                        RECT plot = {PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM};
-                        g_plot_page = (int)LOWORD(w_param) - ID_PLOT_PAGE_1;
-                        InvalidateRect(window, &plot, FALSE);
-                    }
                     return 0;
                 case ID_DISTANCE:
                 case ID_DURATION:
@@ -2337,12 +2775,10 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
         {
             AmetekEvent *event = (AmetekEvent *)l_param;
             wchar_t text[384];
-            RECT plots = {
-                PLOT_LEFT,
-                PLOT_TOP,
-                PLOT_RIGHT,
-                PLOT_BOTTOM
-            };
+            double x_f_pp;
+            double y_f_pp;
+            double x_2f_pp;
+            double y_2f_pp;
 
             if (event == NULL) {
                 return 0;
@@ -2355,43 +2791,76 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     swprintf(
                         text,
                         384,
-                        L"CH1　X：%.5g　Y：%.5g　R1：%.5g　θ1：%.4g°",
+                        L"f　　Xf：%.6g　Yf：%.6g　Rf：%.5g",
                         event->sample.x1,
                         event->sample.y1,
-                        event->sample.r1,
-                        event->sample.theta1);
+                        event->sample.r1);
                     SetWindowTextW(g_ametek_ch1, text);
                     swprintf(
                         text,
                         384,
-                        L"CH2　X：%.5g　Y：%.5g　R2：%.5g　θ2：%.4g°",
+                        L"2f　 X2f：%.6g　Y2f：%.6g　R2f：%.5g",
                         event->sample.x2,
                         event->sample.y2,
-                        event->sample.r2,
-                        event->sample.theta2);
+                        event->sample.r2);
                     SetWindowTextW(g_ametek_ch2, text);
-                    if (isfinite(event->sample.ratio)) {
-                        swprintf(text, 384, L"R1/R2：%.8g", event->sample.ratio);
+                    if (ametek_peak_to_peak_values(
+                            &g_ametek_peaks,
+                            &x_f_pp,
+                            &y_f_pp,
+                            &x_2f_pp,
+                            &y_2f_pp)) {
+                        swprintf(
+                            text,
+                            384,
+                            L"Xf：%.6g\nYf：%.6g",
+                            x_f_pp,
+                            y_f_pp);
+                        SetWindowTextW(g_ametek_f_peaks, text);
+                        swprintf(
+                            text,
+                            384,
+                            L"X2f：%.6g\nY2f：%.6g",
+                            x_2f_pp,
+                            y_2f_pp);
+                        SetWindowTextW(g_ametek_2f_peaks, text);
+                    }
+                    if (event->sample.phase_valid) {
+                        swprintf(
+                            text,
+                            384,
+                            L"Φ：%.6f rad　S：%.5g　Q：%.5g　半径：%.4g%ls",
+                            event->sample.relative_phase_rad,
+                            event->sample.sine_component,
+                            event->sample.cosine_component,
+                            event->sample.phasor_radius,
+                            event->sample.phase_ambiguous ? L"　跨长缺口，周期数待核对" : L"");
                     } else {
-                        swprintf(text, 384, L"R1/R2：不可计算（R2 为 0）");
+                        swprintf(
+                            text,
+                            384,
+                            L"Φ：低置信度，暂不更新　半径：%.4g",
+                            event->sample.phasor_radius);
                     }
                     SetWindowTextW(g_ametek_ratio, text);
                     update_displacement_direction_ui();
                     swprintf(
                         text,
                         384,
-                        L"最大值　R1：%.6g　R2：%.6g",
-                        g_ametek_r1_max,
-                        g_ametek_r2_max);
+                        L"低幅值点：%llu（%.1f%%）",
+                        (unsigned long long)g_ametek_low_count,
+                        100.0 * (double)g_ametek_low_count /
+                            (double)g_ametek_sample_count);
                     SetWindowTextW(g_ametek_maxima, text);
                     swprintf(
                         text,
                         384,
-                        L"样本数：%llu　已采集：%.1f s",
+                        L"样本数：%llu　%.1f s",
                         (unsigned long long)g_ametek_sample_count,
                         event->sample.elapsed_s);
                     SetWindowTextW(g_ametek_count, text);
-                    InvalidateRect(window, &plots, FALSE);
+                    update_ametek_quality_ui();
+                    InvalidateRect(window, NULL, FALSE);
                 }
             } else if (event->kind == AMETEK_EVENT_STATUS) {
                 if (event->success) {
@@ -2414,6 +2883,31 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             return 0;
         }
 
+        case WM_CTLCOLORSTATIC:
+            if ((HWND)l_param == g_ametek_quality && g_quality_brush != NULL) {
+                HDC dc = (HDC)w_param;
+                COLORREF background;
+                COLORREF foreground;
+
+                if (g_quality_state == AMETEK_QUALITY_GOOD) {
+                    background = RGB(225, 247, 234);
+                    foreground = RGB(20, 105, 55);
+                } else if (g_quality_state == AMETEK_QUALITY_WARNING) {
+                    background = RGB(255, 247, 214);
+                    foreground = RGB(125, 80, 0);
+                } else if (g_quality_state == AMETEK_QUALITY_BAD) {
+                    background = RGB(255, 226, 226);
+                    foreground = RGB(155, 25, 25);
+                } else {
+                    background = RGB(235, 241, 248);
+                    foreground = RGB(65, 80, 100);
+                }
+                SetBkColor(dc, background);
+                SetTextColor(dc, foreground);
+                return (LRESULT)g_quality_brush;
+            }
+            break;
+
         case WM_PAINT:
             paint_ametek_plots(window);
             return 0;
@@ -2433,6 +2927,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             if (g_font != NULL) DeleteObject(g_font);
             if (g_arrow_font != NULL) DeleteObject(g_arrow_font);
             if (g_title_font != NULL) DeleteObject(g_title_font);
+            if (g_quality_brush != NULL) DeleteObject(g_quality_brush);
             PostQuitMessage(0);
             return 0;
     }
@@ -2488,11 +2983,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
         0,
         window_class.lpszClassName,
         L"卡西米尔力测量 · 位移台与干涉读出",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        1200,
-        920,
+        1280,
+        900,
         NULL,
         NULL,
         instance,
