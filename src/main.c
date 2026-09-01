@@ -72,8 +72,7 @@ enum AppState {
     APP_CONNECTING,
     APP_IDLE,
     APP_JOGGING,
-    APP_TIMED_MOVE,
-    APP_SINE_MOVE
+    APP_TIMED_MOVE
 };
 
 enum UiEventKind {
@@ -108,10 +107,6 @@ typedef struct TimedArgs {
     MotionPlan plan;
 } TimedArgs;
 
-typedef struct SineArgs {
-    SineMotionPlan plan;
-} SineArgs;
-
 typedef struct AmetekArgs {
     wchar_t host[256];
     double k;
@@ -143,10 +138,6 @@ enum ControlId {
     ID_DISTANCE,
     ID_DURATION,
     ID_START_TIMED,
-    ID_SINE_AMPLITUDE,
-    ID_SINE_FREQUENCY,
-    ID_SINE_DURATION,
-    ID_START_SINE,
     ID_STOP,
     ID_AMETEK_HOST,
     ID_AMETEK_K,
@@ -167,13 +158,12 @@ enum ControlId {
 
 #define POSITION_REFRESH_TIMER_ID 1U
 #define POSITION_REFRESH_INTERVAL_MS 100U
-#define SINE_TRAJECTORY_INTERVAL_MS 5U
 #define AMETEK_PLOT_MAX_POINTS 200U
 
 #define PLOT_LEFT 20
-#define PLOT_TOP 650
+#define PLOT_TOP 570
 #define PLOT_RIGHT 1028
-#define PLOT_BOTTOM 950
+#define PLOT_BOTTOM 870
 
 static HINSTANCE g_instance;
 static HWND g_main_window;
@@ -188,12 +178,6 @@ static HWND g_direction;
 static HWND g_distance;
 static HWND g_duration;
 static HWND g_start_timed;
-static HWND g_sine_amplitude;
-static HWND g_sine_frequency;
-static HWND g_sine_duration;
-static HWND g_sine_summary;
-static HWND g_start_sine;
-static HWND g_sine_stop;
 static HWND g_stop;
 static HWND g_connection_status;
 static HWND g_motion_status;
@@ -638,63 +622,13 @@ static void update_plan_summary(void)
     }
 }
 
-static int read_sine_motion_plan(
-    SineMotionPlan *plan,
-    wchar_t *error,
-    size_t capacity)
-{
-    double amplitude_nm;
-    double frequency_hz;
-    double duration_s;
-
-    if (!parse_double_control(g_sine_amplitude, &amplitude_nm)) {
-        swprintf(error, capacity, L"请输入有效的正弦振幅（nm）。");
-        return 0;
-    }
-    if (!parse_double_control(g_sine_frequency, &frequency_hz)) {
-        swprintf(error, capacity, L"请输入有效的正弦频率（Hz）。");
-        return 0;
-    }
-    if (!parse_double_control(g_sine_duration, &duration_s)) {
-        swprintf(error, capacity, L"请输入有效的正弦持续时间（s）。");
-        return 0;
-    }
-    return sine_motion_plan_create(
-        amplitude_nm,
-        frequency_hz,
-        duration_s,
-        plan,
-        error,
-        capacity);
-}
-
-static void update_sine_summary(void)
-{
-    SineMotionPlan plan;
-    wchar_t error[256];
-    wchar_t summary[256];
-
-    if (read_sine_motion_plan(&plan, error, 256)) {
-        swprintf(
-            summary,
-            256,
-            L"峰峰值：%d nm　峰值速度：%.3f nm/s　周期数：%.3f",
-            plan.amplitude_nm * 2,
-            plan.peak_speed_nm_s,
-            plan.frequency_hz * plan.duration_s);
-        SetWindowTextW(g_sine_summary, summary);
-    } else {
-        SetWindowTextW(g_sine_summary, L"峰峰值：—　峰值速度：—　周期数：—");
-    }
-}
-
 static void update_controls(void)
 {
     enum AppState state = app_state();
     BOOL disconnected = state == APP_DISCONNECTED;
     BOOL idle = state == APP_IDLE;
     BOOL jogging = state == APP_JOGGING;
-    BOOL moving = jogging || state == APP_TIMED_MOVE || state == APP_SINE_MOVE;
+    BOOL moving = jogging || state == APP_TIMED_MOVE;
     LONG jog_direction = InterlockedCompareExchange(&g_active_jog_direction, 0, 0);
 
     EnableWindow(g_locator, disconnected);
@@ -710,13 +644,7 @@ static void update_controls(void)
     EnableWindow(g_distance, idle);
     EnableWindow(g_duration, idle);
     EnableWindow(g_start_timed, idle);
-
-    EnableWindow(g_sine_amplitude, idle);
-    EnableWindow(g_sine_frequency, idle);
-    EnableWindow(g_sine_duration, idle);
-    EnableWindow(g_start_sine, idle);
     EnableWindow(g_stop, moving);
-    EnableWindow(g_sine_stop, moving);
 }
 
 static void update_ametek_controls(void)
@@ -1278,333 +1206,6 @@ static DWORD WINAPI timed_thread(LPVOID parameter)
     return 0;
 }
 
-static void post_sine_failure(
-    NT_STATUS result,
-    const wchar_t *operation,
-    int position_nm,
-    double elapsed_s)
-{
-    wchar_t text[320];
-
-    swprintf(
-        text,
-        320,
-        L"%ls失败：%ls（NT_STATUS %u）",
-        operation,
-        nt_error_name(result),
-        result);
-    post_ui_event(
-        UI_MOTION_DONE,
-        0,
-        result,
-        position_nm,
-        elapsed_s,
-        0.0,
-        text);
-}
-
-static double sine_elapsed_seconds(
-    const LARGE_INTEGER *start,
-    const LARGE_INTEGER *frequency)
-{
-    LARGE_INTEGER now;
-
-    QueryPerformanceCounter(&now);
-    return (double)(now.QuadPart - start->QuadPart) /
-        (double)frequency->QuadPart;
-}
-
-static DWORD WINAPI sine_thread(LPVOID parameter)
-{
-    SineArgs *args = (SineArgs *)parameter;
-    SineMotionPlan plan = args->plan;
-    NT_STATUS result;
-    unsigned int enabled = 0;
-    unsigned int status = NT_STOPPED_STATUS;
-    int initial_position = 0;
-    int current_position = 0;
-    int commanded_offset_nm = 0;
-    ULONGLONG sensor_start_ms;
-    LARGE_INTEGER counter_frequency;
-    LARGE_INTEGER start_counter;
-    wchar_t text[320];
-
-    HeapFree(GetProcessHeap(), 0, args);
-
-    result = g_api.SetSensorEnabled(
-        g_system_index,
-        (NT_INDEX)g_device_channel,
-        NT_SENSOR_ENABLED);
-    if (result != NT_OK) {
-        post_sine_failure(result, L"启用位置传感器", 0, 0.0);
-        return 0;
-    }
-
-    sensor_start_ms = GetTickCount64();
-    for (;;) {
-        if (WaitForSingleObject(g_stop_event, 20) == WAIT_OBJECT_0) {
-            g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-            post_ui_event(
-                UI_MOTION_DONE,
-                1,
-                NT_OK,
-                0,
-                0.0,
-                0.0,
-                L"正弦运动已取消");
-            return 0;
-        }
-        result = g_api.GetSensorEnabled(
-            g_system_index,
-            (NT_INDEX)g_device_channel,
-            &enabled);
-        if (result != NT_OK) {
-            post_sine_failure(result, L"读取传感器状态", 0, 0.0);
-            return 0;
-        }
-        if (enabled == NT_SENSOR_ENABLED) {
-            break;
-        }
-        if (GetTickCount64() - sensor_start_ms > 3000ULL) {
-            post_ui_event(
-                UI_MOTION_DONE,
-                0,
-                15U,
-                0,
-                0.0,
-                0.0,
-                L"位置传感器在 3 秒内未就绪。");
-            return 0;
-        }
-    }
-
-    result = g_api.SetAccumulate(
-        g_system_index,
-        (NT_INDEX)g_device_channel,
-        NT_ACCUMULATE_RELATIVE_POSITIONS);
-    if (result != NT_OK) {
-        post_sine_failure(result, L"启用闭环目标累积", 0, 0.0);
-        return 0;
-    }
-    result = g_api.SetMaxFrequency(
-        g_system_index,
-        (NT_INDEX)g_device_channel,
-        CLOSED_LOOP_MAX_FREQUENCY);
-    if (result != NT_OK) {
-        post_sine_failure(result, L"设置闭环最大频率", 0, 0.0);
-        return 0;
-    }
-    result = g_api.SetMoveSpeed(
-        g_system_index,
-        (NT_INDEX)g_device_channel,
-        NT_SPEED_DISABLED,
-        0U);
-    if (result != NT_OK) {
-        post_sine_failure(result, L"关闭控制器原生速度模式", 0, 0.0);
-        return 0;
-    }
-    result = g_api.GetPosition(
-        g_system_index,
-        (NT_INDEX)g_device_channel,
-        &initial_position);
-    if (result != NT_OK) {
-        post_sine_failure(result, L"读取初始位置", 0, 0.0);
-        return 0;
-    }
-    current_position = initial_position;
-
-    if ((long long)initial_position - (long long)plan.amplitude_nm < INT_MIN ||
-        (long long)initial_position + (long long)plan.amplitude_nm > INT_MAX) {
-        post_ui_event(
-            UI_MOTION_DONE,
-            0,
-            9U,
-            current_position,
-            0.0,
-            0.0,
-            L"正弦轨迹端点超出控制器的 32 位位置范围。");
-        return 0;
-    }
-    if (!QueryPerformanceFrequency(&counter_frequency) ||
-        !QueryPerformanceCounter(&start_counter)) {
-        post_ui_event(
-            UI_MOTION_DONE,
-            0,
-            255U,
-            current_position,
-            0.0,
-            0.0,
-            L"无法启动正弦轨迹高精度计时器。");
-        return 0;
-    }
-
-    for (;;) {
-        double elapsed_s;
-        double progress;
-        int desired_offset_nm;
-        long long delta_nm;
-
-        if (WaitForSingleObject(
-                g_stop_event,
-                SINE_TRAJECTORY_INTERVAL_MS) == WAIT_OBJECT_0) {
-            double stopped_elapsed_s = sine_elapsed_seconds(
-                &start_counter,
-                &counter_frequency);
-            g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-            g_api.GetPosition(
-                g_system_index,
-                (NT_INDEX)g_device_channel,
-                &current_position);
-            swprintf(
-                text,
-                320,
-                L"正弦运动已停止：测得末偏移 %lld nm，用时 %.3f s",
-                (long long)current_position - (long long)initial_position,
-                stopped_elapsed_s);
-            post_ui_event(
-                UI_MOTION_DONE,
-                1,
-                NT_OK,
-                current_position,
-                stopped_elapsed_s,
-                0.0,
-                text);
-            return 0;
-        }
-
-        elapsed_s = sine_elapsed_seconds(&start_counter, &counter_frequency);
-        if (elapsed_s > plan.duration_s) {
-            elapsed_s = plan.duration_s;
-        }
-        desired_offset_nm = sine_motion_offset_nm(&plan, elapsed_s);
-        delta_nm = (long long)desired_offset_nm - (long long)commanded_offset_nm;
-        if (delta_nm != 0) {
-            if (delta_nm < INT_MIN || delta_nm > INT_MAX) {
-                g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-                post_ui_event(
-                    UI_MOTION_DONE,
-                    0,
-                    9U,
-                    current_position,
-                    elapsed_s,
-                    0.0,
-                    L"正弦轨迹单步指令超出控制器范围。");
-                return 0;
-            }
-            result = g_api.GotoRelative(
-                g_system_index,
-                (NT_INDEX)g_device_channel,
-                (int)delta_nm);
-            if (result != NT_OK) {
-                g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-                post_sine_failure(
-                    result,
-                    L"追加正弦闭环纳米目标",
-                    current_position,
-                    elapsed_s);
-                return 0;
-            }
-            commanded_offset_nm = desired_offset_nm;
-        }
-
-        result = g_api.GetStatus(
-            g_system_index,
-            (NT_INDEX)g_device_channel,
-            &status);
-        if (result != NT_OK) {
-            g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-            post_sine_failure(result, L"读取运动状态", current_position, elapsed_s);
-            return 0;
-        }
-        result = g_api.GetPosition(
-            g_system_index,
-            (NT_INDEX)g_device_channel,
-            &current_position);
-        if (result != NT_OK) {
-            g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-            post_sine_failure(result, L"读取当前位置", current_position, elapsed_s);
-            return 0;
-        }
-
-        progress = elapsed_s / plan.duration_s;
-        post_ui_event(
-            UI_PROGRESS,
-            1,
-            status,
-            current_position,
-            elapsed_s,
-            progress,
-            NULL);
-        if (is_fault_status(status)) {
-            g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-            swprintf(text, 320, L"正弦运动因限位或控制器故障停止（状态码 %u）。", status);
-            post_ui_event(
-                UI_MOTION_DONE,
-                0,
-                255U,
-                current_position,
-                elapsed_s,
-                progress,
-                text);
-            return 0;
-        }
-        if (elapsed_s >= plan.duration_s) {
-            break;
-        }
-    }
-
-    result = g_api.Stop(g_system_index, (NT_INDEX)g_device_channel);
-    if (result != NT_OK) {
-        post_sine_failure(
-            result,
-            L"结束正弦闭环轨迹",
-            current_position,
-            plan.duration_s);
-        return 0;
-    }
-    Sleep(50);
-    result = g_api.GetPosition(
-        g_system_index,
-        (NT_INDEX)g_device_channel,
-        &current_position);
-    if (result != NT_OK) {
-        post_sine_failure(
-            result,
-            L"读取正弦轨迹结束位置",
-            current_position,
-            plan.duration_s);
-        return 0;
-    }
-    {
-        double actual_elapsed_s = sine_elapsed_seconds(
-            &start_counter,
-            &counter_frequency);
-        int final_target_offset_nm = sine_motion_offset_nm(
-            &plan,
-            plan.duration_s);
-        long long measured_offset_nm =
-            (long long)current_position - (long long)initial_position;
-        swprintf(
-            text,
-            320,
-            L"正弦轨迹结束：振幅 %d nm，频率 %.4g Hz，末目标 %d nm，测得末偏移 %lld nm，用时 %.3f s",
-            plan.amplitude_nm,
-            plan.frequency_hz,
-            final_target_offset_nm,
-            measured_offset_nm,
-            actual_elapsed_s);
-        post_ui_event(
-            UI_MOTION_DONE,
-            1,
-            NT_OK,
-            current_position,
-            actual_elapsed_s,
-            1.0,
-            text);
-    }
-    return 0;
-}
-
 static void finish_worker_handle(void)
 {
     if (g_worker != NULL) {
@@ -1771,9 +1372,7 @@ static void start_jog(int direction)
 static void request_stop(void)
 {
     enum AppState state = app_state();
-    if (state != APP_JOGGING &&
-        state != APP_TIMED_MOVE &&
-        state != APP_SINE_MOVE) {
+    if (state != APP_JOGGING && state != APP_TIMED_MOVE) {
         return;
     }
     SetEvent(g_stop_event);
@@ -1821,50 +1420,6 @@ static void start_timed_move(void)
         SetWindowTextW(g_motion_status, L"运动状态：待机");
         update_controls();
         show_error(L"无法启动定时位移线程。");
-    }
-}
-
-static void start_sine_move(void)
-{
-    SineArgs *args;
-    SineMotionPlan plan;
-    wchar_t error[256];
-    wchar_t text[320];
-
-    if (app_state() != APP_IDLE) {
-        return;
-    }
-    if (!read_sine_motion_plan(&plan, error, 256)) {
-        show_error(error);
-        return;
-    }
-
-    args = (SineArgs *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*args));
-    if (args == NULL) {
-        show_error(L"内存不足。");
-        return;
-    }
-    args->plan = plan;
-
-    ResetEvent(g_stop_event);
-    set_app_state(APP_SINE_MOVE);
-    swprintf(
-        text,
-        320,
-        L"运动状态：正弦振动准备中，振幅 %d nm，频率 %.4g Hz，持续 %.3f s",
-        plan.amplitude_nm,
-        plan.frequency_hz,
-        plan.duration_s);
-    SetWindowTextW(g_motion_status, text);
-    update_controls();
-
-    g_worker = CreateThread(NULL, 0, sine_thread, args, 0, NULL);
-    if (g_worker == NULL) {
-        HeapFree(GetProcessHeap(), 0, args);
-        set_app_state(APP_IDLE);
-        SetWindowTextW(g_motion_status, L"运动状态：待机");
-        update_controls();
-        show_error(L"无法启动正弦运动线程。");
     }
 }
 
@@ -2494,50 +2049,14 @@ static void create_ui(void)
     g_start_timed = make_control(0, L"BUTTON", L"开始运动", BS_DEFPUSHBUTTON | WS_TABSTOP, 406, 370, 137, 40, ID_START_TIMED);
     g_stop = make_control(0, L"BUTTON", L"停止运动", BS_PUSHBUTTON | WS_TABSTOP, 558, 370, 165, 40, ID_STOP);
 
-    group = make_control(0, L"BUTTON", L" 正弦周期运动 ", BS_GROUPBOX, 20, 448, 722, 105, 0);
-    (void)group;
-    make_control(0, L"STATIC", L"振幅 (nm)", SS_LEFT, 38, 477, 82, 25, 0);
-    g_sine_amplitude = make_control(
-        WS_EX_CLIENTEDGE,
-        L"EDIT",
-        L"100",
-        ES_AUTOHSCROLL | WS_TABSTOP,
-        123, 473, 78, 29, ID_SINE_AMPLITUDE);
-    make_control(0, L"STATIC", L"频率 (Hz)", SS_LEFT, 214, 477, 78, 25, 0);
-    g_sine_frequency = make_control(
-        WS_EX_CLIENTEDGE,
-        L"EDIT",
-        L"1",
-        ES_AUTOHSCROLL | WS_TABSTOP,
-        294, 473, 72, 29, ID_SINE_FREQUENCY);
-    make_control(0, L"STATIC", L"持续时间 (s)", SS_LEFT, 379, 477, 101, 25, 0);
-    g_sine_duration = make_control(
-        WS_EX_CLIENTEDGE,
-        L"EDIT",
-        L"5",
-        ES_AUTOHSCROLL | WS_TABSTOP,
-        483, 473, 67, 29, ID_SINE_DURATION);
-    g_start_sine = make_control(
-        0, L"BUTTON", L"开始正弦", BS_PUSHBUTTON | WS_TABSTOP,
-        560, 471, 98, 33, ID_START_SINE);
-    g_sine_stop = make_control(
-        0, L"BUTTON", L"停止", BS_PUSHBUTTON | WS_TABSTOP,
-        666, 471, 58, 33, ID_STOP);
-    g_sine_summary = make_control(
-        0,
-        L"STATIC",
-        L"峰峰值：200 nm　峰值速度：628.319 nm/s　周期数：5.000",
-        SS_LEFT,
-        38, 516, 680, 25, 0);
-
-    g_motion_status = make_control(0, L"STATIC", L"运动状态：待机", SS_LEFT, 24, 568, 712, 26, 0);
-    g_position = make_control(0, L"STATIC", L"位移台编码器位置：—", SS_LEFT, 24, 598, 712, 26, 0);
+    g_motion_status = make_control(0, L"STATIC", L"运动状态：待机", SS_LEFT, 24, 458, 712, 26, 0);
+    g_position = make_control(0, L"STATIC", L"位移台编码器位置：—", SS_LEFT, 24, 490, 712, 26, 0);
     make_control(
         0,
         L"STATIC",
-        L"提示：三种模式均使用位置传感器闭环控制；正弦振幅为相对启动位置的峰值。",
+        L"提示：两种模式均使用位置传感器闭环控制；松开后的停止延迟需实机验证。",
         SS_LEFT,
-        24, 628, 712, 26, 0);
+        24, 527, 712, 26, 0);
 
     group = make_control(0, L"BUTTON", L" Ametek 7270 干涉读出 ", BS_GROUPBOX, 760, 84, 400, 469, 0);
     (void)group;
@@ -2606,28 +2125,28 @@ static void create_ui(void)
         L"BUTTON",
         L" 图表页 ",
         BS_GROUPBOX,
-        1042, 650, 118, 300, 0);
+        1042, 570, 118, 300, 0);
     (void)group;
-    make_control(0, L"STATIC", L"选择当前页", SS_CENTER, 1054, 680, 94, 24, 0);
+    make_control(0, L"STATIC", L"选择当前页", SS_CENTER, 1054, 600, 94, 24, 0);
     g_plot_page_buttons[0] = make_control(
         0, L"BUTTON", L"1  幅值", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,
-        1054, 718, 94, 34, ID_PLOT_PAGE_1);
+        1054, 638, 94, 34, ID_PLOT_PAGE_1);
     g_plot_page_buttons[1] = make_control(
         0, L"BUTTON", L"2  比值", BS_AUTORADIOBUTTON | WS_TABSTOP,
-        1054, 766, 94, 34, ID_PLOT_PAGE_2);
+        1054, 686, 94, 34, ID_PLOT_PAGE_2);
     g_plot_page_buttons[2] = make_control(
         0, L"BUTTON", L"3  位移", BS_AUTORADIOBUTTON | WS_TABSTOP,
-        1054, 814, 94, 34, ID_PLOT_PAGE_3);
+        1054, 734, 94, 34, ID_PLOT_PAGE_3);
     SendMessageW(g_plot_page_buttons[0], BM_SETCHECK, BST_CHECKED, 0);
     g_ametek_reverse = make_control(
         0, L"BUTTON", L"反转：关", BS_PUSHBUTTON | WS_TABSTOP,
-        1054, 862, 94, 34, ID_AMETEK_REVERSE);
+        1054, 782, 94, 34, ID_AMETEK_REVERSE);
     make_control(
         0,
         L"STATIC",
         L"最近 200 点\n横轴：时间",
         SS_CENTER,
-        1054, 904, 94, 40, 0);
+        1054, 824, 94, 40, 0);
 }
 
 static int safe_to_close(void)
@@ -2636,9 +2155,7 @@ static int safe_to_close(void)
     DWORD wait_result;
 
     InterlockedExchange(&g_closing, 1);
-    if (state == APP_JOGGING ||
-        state == APP_TIMED_MOVE ||
-        state == APP_SINE_MOVE) {
+    if (state == APP_JOGGING || state == APP_TIMED_MOVE) {
         SetEvent(g_stop_event);
     }
     if (InterlockedCompareExchange(&g_ametek_running, 0, 0)) {
@@ -2714,9 +2231,6 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 case ID_START_TIMED:
                     if (HIWORD(w_param) == BN_CLICKED) start_timed_move();
                     return 0;
-                case ID_START_SINE:
-                    if (HIWORD(w_param) == BN_CLICKED) start_sine_move();
-                    return 0;
                 case ID_STOP:
                     if (HIWORD(w_param) == BN_CLICKED) request_stop();
                     return 0;
@@ -2744,11 +2258,6 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 case ID_DISTANCE:
                 case ID_DURATION:
                     if (HIWORD(w_param) == EN_CHANGE) update_plan_summary();
-                    return 0;
-                case ID_SINE_AMPLITUDE:
-                case ID_SINE_FREQUENCY:
-                case ID_SINE_DURATION:
-                    if (HIWORD(w_param) == EN_CHANGE) update_sine_summary();
                     return 0;
                 case ID_DIRECTION:
                     if (HIWORD(w_param) == CBN_SELCHANGE) update_plan_summary();
@@ -2808,21 +2317,12 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 swprintf(text, 320, L"位移台编码器位置：%d nm", event->position_nm);
                 SetWindowTextW(g_position, text);
             } else if (event->kind == UI_PROGRESS) {
-                if (app_state() == APP_SINE_MOVE) {
-                    swprintf(
-                        text,
-                        320,
-                        L"运动状态：正弦振动中　%.1f%%　已用 %.2f s",
-                        event->progress * 100.0,
-                        event->elapsed_s);
-                } else {
-                    swprintf(
-                        text,
-                        320,
-                        L"运动状态：闭环运动中　%.1f%%　已用 %.2f s",
-                        event->progress * 100.0,
-                        event->elapsed_s);
-                }
+                swprintf(
+                    text,
+                    320,
+                    L"运动状态：闭环运动中　%.1f%%　已用 %.2f s",
+                    event->progress * 100.0,
+                    event->elapsed_s);
                 SetWindowTextW(g_motion_status, text);
                 swprintf(text, 320, L"位移台编码器位置：%d nm", event->position_nm);
                 SetWindowTextW(g_position, text);
@@ -2992,7 +2492,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         1200,
-        1000,
+        920,
         NULL,
         NULL,
         instance,
