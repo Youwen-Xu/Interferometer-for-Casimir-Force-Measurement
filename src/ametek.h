@@ -5,6 +5,16 @@
 
 #define AMETEK_SAMPLE_INTERVAL_MS 100U
 
+typedef enum AmetekUnwrapDecision {
+    AMETEK_UNWRAP_NONE = 0,
+    AMETEK_UNWRAP_PENDING,
+    AMETEK_UNWRAP_CROSSED_ZERO,
+    AMETEK_UNWRAP_CROSSED_HALF_PI,
+    AMETEK_UNWRAP_REVERSED_NEAR_ZERO,
+    AMETEK_UNWRAP_REVERSED_NEAR_HALF_PI,
+    AMETEK_UNWRAP_UNCERTAIN
+} AmetekUnwrapDecision;
+
 typedef struct AmetekSample {
     double elapsed_s;
     double x1;
@@ -18,6 +28,7 @@ typedef struct AmetekSample {
     double ratio;
     double folded_phase_rad;
     double displacement_nm;
+    AmetekUnwrapDecision unwrap_decision;
 } AmetekSample;
 
 typedef struct AmetekPhaseUnwrapper {
@@ -27,6 +38,18 @@ typedef struct AmetekPhaseUnwrapper {
     double previous_folded_phase_rad;
     double previous_delta_rad;
     double unwrapped_phase_rad;
+    double peak_r1;
+    double peak_r2;
+    int theta1_reference_valid;
+    int theta2_reference_valid;
+    double theta1_reference_deg;
+    double theta2_reference_deg;
+    int pending_boundary;
+    int pending_old_slope;
+    unsigned int pending_samples;
+    double pending_turn_folded_phase_rad;
+    double pending_turn_unwrapped_phase_rad;
+    double pending_reference_theta_deg;
 } AmetekPhaseUnwrapper;
 
 typedef struct AmetekClient {
@@ -51,9 +74,11 @@ double ametek_calculate_displacement(
 
 void ametek_phase_unwrapper_reset(AmetekPhaseUnwrapper *unwrapper);
 
-double ametek_unwrap_phase(
+double ametek_unwrap_sample(
     AmetekPhaseUnwrapper *unwrapper,
-    double folded_phase_rad);
+    AmetekSample *sample);
+
+const char *ametek_unwrap_decision_name(AmetekUnwrapDecision decision);
 
 int ametek_parse_response(
     const char *response,

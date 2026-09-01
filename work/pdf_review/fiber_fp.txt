@@ -1,0 +1,329 @@
+
+===== PAGE 1 / 4 =====
+                                                                                  
+                                                                                  
+        7450 Vol.56,No.26/September102017/AppliedOptics        Research Article   
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                               –                  
+       Demodulation       algorithm     for optical   fiber  F  P  sensor         
+                                                                                  
+       HUADONG YANG,1,2 XINGLIN TONG,1,2,* ZHANG CUI,1,2 CHENGWEI DENG,1,2 QIAN GUO,1,2 AND PAN HU 1,2
+       1NationalEngineeringLaboratoryforFiberOpticSensingTechnology,WuhanUniversityofTechnology,Wuhan,Hubei430070,China
+       2KeyLaboratoryofFiberOpticSensingTechnologyandInformationProcessing,WuhanUniversityofTechnology,TheMinistryofEducation,
+       Wuhan,Hubei430070,China                                                    
+       *Correspondingauthor:tongxinglin@whut.edu.cn                               
+       Received29June2017;revised21August2017;accepted22August2017;posted22August2017(Doc.ID301225);published8September2017
+                                                                                  
+          The demodulation algorithm is very important to improvingthe measurement accuracy ofa sensing system. In
+          thispaper,thevariablestepsizehillclimbingsearchmethodwillbeinitiallyusedfortheopticalfiberFabry–Perot
+          (F–P)sensingdemodulationalgorithm.Comparedwiththetraditionaldiscretegaptransformationdemodulation
+          algorithm,thecomputationisgreatlyreducedbychangingstepsizeofeachclimb,whichcouldachievenano-scale
+          resolution, high measurement accuracy, high demodulation rates, and large dynamic demodulation range.
+          An optical fiber F–P pressure sensor based on micro-electro-mechanical system (MEMS) has been fabricated to
+          carryouttheexperiment,andtheresultsshowthattheresolutionofthealgorithmcanreachnano-scalelevel,the
+          sensor’s sensitivity is about 2.5 nm∕KPa, which is similar to the theoretical value, and this sensor has great
+          reproducibility. ©2017OpticalSocietyofAmerica                           
+          OCIScodes:(060.2370)Fiberopticssensors;(070.0070)Fourieropticsandsignalprocessing.
+          https://doi.org/10.1364/AO.56.007450                                    
+                                                                                  
+                                                                                  
+                                                                                  
+       1. INTRODUCTION                     usesabroadbandlightsourceorsweptsource,andthechange
+       OpticalfiberFabry–Perot(F–P)sensorsareakindoffiberoptic of the F–P cavity length can be gained by getting the phase
+                                           change of the spectrum. This demodulation method has the
+       sensor with the longest history, the most mature technology,               
+                                           high demodulation precision and is almost unaffected by the
+       and the most common applications. As a vital branch of the                 
+       optical fiber sensor, the optical fiber F–P sensor not only has disturbance of the light source so it has received a great deal
+                                           of interest in the past years. The wavelength-tracking method
+       the general advantages of an optical fiber sensor, such as high            
+                                           is a kind of phase demodulation method in which the wave-
+       temperature resistance, immunity to electromagnetic interfer-              
+                                           lengthshiftofonefringepeakisusedtodetectthesmallcavity
+       ence,highresistancetocorrosion,intrinsicsafety,remotesens-                 
+                                           length change induced by the measured parameters. This
+       ing, easy to multiplex, and so on [1,2], but it also has the               
+                                           method offers high sensitivity. However, it is limited to mea-
+       uniqueadvantagesofitssimplestructure,highmeasuringpre-                     
+       cision,andwidedetectionrange.Ithasbroadapplicationpros- suring only the relative F–P cavity length change and the
+       pects in high-rise buildings, long-span bridges, large aircraft, dynamic range is rather limited. The fast Fourier transform
+       andthehealthmonitoringforothercomplexstructures[3–5]. (FFT),whichtransformsthesignalfromawavelengthdomain
+        ThesignaldemodulationalgorithmoftheopticalfiberF–P toafrequencydomain,ischaracterizedbyanabilitytomeasure
+       sensorhasagreatinfluenceontheaccuracyandstabilityofthe                     
+                                           theabsolutecavitylength.However,iftheF–Pcavitylengthis
+       measurementresults[6].Itismainlydividedintotwotypes,the short,thedirectcurrentcomponentofthesignalspectrumand
+       intensitydemodulationandphasedemodulation.Amonochro- the frequency component of the cavity length will cross talk,
+       matic laser light source is used in the intensity demodulation thus affecting the demodulation accuracy. Therefore, the
+       algorithmandthecavitylengthlinearlychangeswiththeinter- demodulationmethodisonlylimitedtothelongcavitylength.
+       ference intensity in the linear region. The principle of this Han proposed a new curve fitting method, of which the res-
+       demodulation algorithm is simple and the response speed is olutionwouldbeable toreach 0.288nm.However,the com-
+       veryfastbuttheresultsareeasilyinfluencedbythefluctuation putation quantity is also very large and the running speed is
+       oflightintensityandthedemodulationrangeisnarrow.Some slow [8], which limits its application. A demodulation algo-
+       scholars have also done a lot of work in this area, such as rithm based on the birefringence dispersion characteristics
+       Wangetal.fromtheVirginiaInstitutewhoproposedtheself- for a polarized low-coherence interferometer is proposed in
+       compensating intensity demodulation method using a broad- [9], which can eliminate the interferometric 2π ambiguity of
+       bandlightsource[7].Thephasedemodulationmethodusually locating the zero-order fringe, but the structure is complex.
+       1559-128X/17/267450-04Journal©2017OpticalSocietyofAmerica                  
+
+===== PAGE 2 / 4 =====
+                                                                                  
+                                                                                  
+        Research Article                    Vol.56,No.26/September102017/AppliedOptics 7451
+                                                                                  
+       Yu proposed an improved phase carrier demodulation algo- the minimum sampling frequency only needs to meet the
+       rithm to eliminate the inevitable error of the frequency- Nyquist theorem to achieve the cavity length demodulation.
+       multipliermixingsignal,butthestructureofthesystemisalso The searching step size has a direct relationship with the res-
+       complex [10]. The discrete gap transformation (DGT) algo- olutionoftheDGTdemodulationalgorithm.Thesmallerthe
+       rithm was initially proposed by Musa from the Virginia stepsizeis,thehighertheresolutionis,thegreatertheamount
+       Institute of Technology [11]. This method can effectively of the computation is. Considering that the distribution form
+       improve the measurement resolution by reducing the length of coefficients as calculated by the DGT method is the func-
+       of the simulated cavity but it will increase the computational tionalformofthesinglepeakinthevicinityofthevertexcor-
+       timeanddecreasethedemodulationrate,whichisalsolimited responding to the target cavity length, in order to ensure the
+       inpracticalapplications.Sothedemodulationalgorithmwitha high resolution and reduce the amount of calculation, a novel
+       high demodulation rate and high precision is urgently needed hillclimbingsearchalgorithmisproposedtosearchforthecav-
+       for research and engineering at present. itylength.Inthisalgorithm,afterthecoarsemeasuredvalueis
+        Thehillclimbingsearchmethodhasbeenwellusedinclus- obtainedbyusingtheFFTalgorithm,doingasearchinarange
+       teringanalysis,imageprocessing,andsoon[12,13].Butthere                     
+                                           ofwhichthevalueisthecenterisnotneeded.Whatshouldbe
+       isnoreportthatithasbeenappliedtoopticalfiberF–Psensing                     
+                                           doneisonlytomarkavaluesmallerthanthecoarsemeasured
+       signal demodulation.                                                       
+                                           value as a starting point, and then do a search in the method
+        Inordertogainademodulationalgorithmthatcanbeused                          
+                                           according to the following steps:      
+       inpracticalapplicationwithahighmeasurementaccuracy,high                    
+       demodulation rate, and large dynamic demodulation range, Step one: Wavelet threshold de-noising should be used to
+       ahillclimbing search methodasusedinthe DGTdemodula- avoid the effect of noise on the result of the demodulation.
+                                           Applying the wavelet threshold method to preliminarily de-
+       tionalgorithmhasbeenstudiedforthefirsttimeinthispaper.                     
+                                           noise the raw measurement data.        
+                                           Steptwo:UsetheFFTmethodtogettheroughcavitylengthd1
+       2. PRINCIPAL ANALYSIS AND SIMULATION and search range from a1(cid:4)d1−3 μm to a2(cid:4)d1(cid:5)3 μm.
+       The DGT demodulation algorithm searches for the I(cid:1)g (cid:3) in Step three: Increase the cavity length increase in a large step
+                                     m     size of 1 μm in the order from a1, and make the decreasing
+       thefollowingformulawithacertainstepsizeinasearchrange                      
+                                           cavitylength decrease ina large stepsizeof 1μmin theorder
+       by changing the simulated cavity length g . The g corre-                   
+       sponding to the maximum value of I(cid:1)g (cid:3) is m the cavit m y length from a2. Calculate the discrete cavity length coefficient
+       of the F–P sensor:   m              a(cid:1)s(cid:3)(cid:1)s (cid:4)0;1;2…(cid:3) in Eq. (2) corresponding to the different
+                                           cavity length. Next, compare the subsequent calculated co-
+                    XN                                                            
+                                           efficients with the current coefficient comparison until
+                I(cid:1)g m (cid:3)(cid:4) x(cid:1)n(cid:3)exp(cid:1)Φ g m (cid:3); (1) a(cid:1)s−1(cid:3)>a(cid:1)s(cid:3). Then, get the appropriate cavity length a10
+                     n(cid:4)1             and a20 , and mark the average length as the temporary result.
+                                           Stepfour:Usetheresultofstepthreeasthenextsearchstarting
+                  Φ  (cid:4)j4πk(cid:1)n(cid:3)g ; (2)                            
+                   g m     m               point and change the step size to repeat the above step from
+       where g isthesimulation ofcavitylength, K(cid:1)n(cid:3)isthewave- 1 μm to 100 nm, 10 nm, 1 nm, 0.1 nm, and so on until
+           m                                                                      
+       number that equals the reciprocal of the wavelength, X(cid:1)n(cid:3) is the required accuracy is obtained.
+       the output spectrum of the sensor, n is the CCD array pixel                
+                                             Thetotalamountofcomputationduringfiverunsofthehill
+       number, and N is the sampling points. climbing search is about 120 times. But if 3 μm is set as the
+        Inordertofacilitatetheoperation,thefollowingformofthe                     
+                                           search radius and 0.1 nm as the searching step size, the DGT
+       computing formula is used:                                                 
+              (cid:2)   (cid:2) (cid:2) (cid:2) algorithm needs to calculate 60,000 times. Therefore, the
+              (cid:2) (cid:2) XN (cid:2) (cid:2) 2 (cid:2) (cid:2) XN (cid:2) (cid:2) 2 amount of the computation can be greatly reduced through
+        jI(cid:1)g m (cid:3)j2(cid:4)(cid:2) (cid:2) x(cid:1)n(cid:3)cos(cid:1)Φ g m (cid:3)(cid:2) (cid:2) (cid:5)(cid:2) (cid:2) x(cid:1)n(cid:3)sin(cid:1)Φ g m (cid:3)(cid:2) (cid:2) : (3) thehillclimbingsearchmethod.Moreimportantly,inpractice,
+              n(cid:4)1    n(cid:4)1                                              
+                                           afterreducingthestepsizetodothehillclimbingsearchseveral
+        Infact,thediscretesignalx(cid:1)n(cid:3)ofdiscreteFouriertransform        
+                                           times, the measurement resolution can reach the nano-scale
+       (DFT) can be expressed as           level.                                 
+                  XN                         Everydemodulationalgorithmhasitsownapplicablerange.
+             F(cid:1)f(cid:3)(cid:4) x(cid:1)n(cid:3)exp(cid:1)−j2π·f ·k(cid:1)n(cid:3)(cid:3); (4) Inordertoverifytheeffectofthisdemodulationalgorithm,the
+                  n(cid:4)1                continuous simulation test was carried out using MATLAB.
+                                           The result is shown in Fig. 1.         
+       where f is the frequency of the signal, and its modulus value              
+                                             FromFig.1(a),wecanascertainthattheslopeofthefitting
+       can be expressed as                                                        
+             (cid:2)   (cid:2) (cid:2) (cid:2) curve is almost 1. This means that the demodulation value is
+       jF(cid:1)f(cid:3)j2 (cid:4)                                                
+             (cid:2)                                                              
+             (cid:2) (cid:2)                                                      
+              XN                                                                  
+                x(cid:1)n(cid:3)cos(cid:1)Φ (cid:3)                               
+                       (cid:2)                                                    
+                       (cid:2) (cid:2)                                            
+                        2                                                         
+                         (cid:5)                                                  
+                          (cid:2)                                                 
+                          (cid:2) (cid:2)                                         
+                           XN                                                     
+                             x(cid:1)n(cid:3)sin(cid:1)Φ (cid:3)                  
+                                    (cid:2)                                       
+                                    (cid:2) (cid:2)                               
+                                    2                                             
+                                     ; (5) almostexactlythesameastheactualvalueateachtime.Sothe
+             (cid:2)  f (cid:2) (cid:2) f (cid:2) method can accurately demodulate the cavity length of the
+              n(cid:4)1    n(cid:4)1                                              
+                                           optical fiber F–P sensors in a large dynamic demodulation
+                                           range. InFig. 1(b), we can see that the simulation error obvi-
+                  Φ (cid:4)j2π·f ·k(cid:1)n(cid:3): (6)                           
+                   f                       ously decreases with the increase of the cavity length. So this
+        Fromtheequation,theDGTdemodulationmethodhasthe demodulationalgorithmismoresuitableforF–Psensorswitha
+       same form as DFT. In accordance with the principle of FFT, long cavity length.
+
+===== PAGE 3 / 4 =====
+                                                                                  
+                                                                                  
+        7452 Vol.56,No.26/September102017/AppliedOptics        Research Article   
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                           Fig. 3. Picture of the sensitive diaphragm of the F–P sensor.
+                                                                                  
+                                                                                  
+                                             WhenthediaphragmisundersteadyexternalpressureP,the
+                                           perturbation w(cid:1)x;y;t(cid:3) satisfies the partial differential equation:
+                                                    (cid:3)      (cid:4)          
+                                                    ∂4                            
+                                                     w                            
+                                                          ∂4                      
+                                                           w                      
+                                                              ∂4                  
+                                                                w                 
+                                                   D   (cid:5)2 (cid:5) (cid:4)P; (7)
+                                                    ∂x 4 ∂x 2∂y 2 ∂y 4            
+                                           where D is flat bending stiffness and can be expressed as
+                                                             3                    
+                                                            Eh                    
+                                                       D(cid:4) ;          (8)    
+                                                          12(cid:1)1−μ2(cid:3)    
+                                           where E is the Young modulus, and μ is the Poisson’s ratio.
+                                             ThelengthofthesquarediaphragmisL,andthethickness
+                                           is h. According to the boundary conditions, the analytic solu-
+                                           tion of Eq. (7) can be obtained:       
+                                                         (cid:5) (cid:6) (cid:5) (cid:6)
+                                                       PL 4 4x 2 2 4y 2 2         
+                                                 w(cid:1)x;y(cid:3)(cid:4) 1− 1− : (9)
+                                                       752  L 2    L 2            
+                                             Themaximumdisturbanceisatthecenterofthediaphragm
+       Fig.1. Cavitylengthincreasedfrom50μmto300μmwithastep                       
+       sizeof1μm.Thecentralwavelengthλ ofthelightsourceis845nm, and can be expressed as
+                         p                                                        
+       the minimum wavelength is 785 nm, the maximum wavelength is 12P(cid:1)1−μ2(cid:3) L 4
+                                                    w(cid:1)0;0(cid:3)(cid:4) · ; (10)
+       905 nm. (a) The relationship of the demodulation cavity length 752E h 3    
+       change with the real cavity length, (b) the relationship of the simu-      
+                                           so the sensitivity of the diaphragm can be calculated by the
+       lation error changes with the cavity length.                               
+                                           following formula:                     
+                                                      w(cid:1)0;0(cid:3) 12 (cid:1)1−μ2(cid:3)L 4
+                                                   S (cid:4) (cid:4) :    (11)    
+       3. EXPERIMENTS AND RESULTS                      P    752 E h 3             
+       Inordertoverifythepracticalperformanceofthealgorithm,an For this diaphragm, L is 2.2 mm, h is 100 μm, E is
+       extrinsic Fabry–Perot interferometric sensor based on micro- 130 GPa, and μ is 0.28. So the sensitivity is 2.64 nm∕KPa.
+       electro-mechanical system (MEMS) with a cavity length of To test the stability and resolution of this algorithm using
+       about90μmwasusedtocarryouttheexperiment.Theexperi- theaboveexperimentalsetup,along-timecontinuousmeasure-
+       ment setup is shown in Fig. 2.      menthasbeencarriedoutinthesameenvironment.Theresult
+        Thesensitivediaphragmofthesensorisfabricatedbymono- is shown in Fig. 4.   
+       crystalline silicon. It is a square diaphragm shown in Fig. 3. Theresultshowsthatthemaximumvalueofthecavitylength
+                                           is82.535607μmandtheminimumis82.483244μm.Thestan-
+                                           darddeviationis0.014178599μm.Throughanalysis,theerror
+                                           maycomefromthelongcentralwavelengthof1550nmandthe
+                                           narrow bandwidth of the light source with 50 nm (between
+                     Isolator              1520nmand1570nm).Ifweusealightsourcewithacentral
+           Band light                                                             
+            source                 Pressure wavelengthof850nmandabandwidthof100nm,thestability
+                           Coupler  Device and resolution of the method will be greatly improved.
+                Signal                                                            
+                                             The MEMS pressure sensors need to be calibrated before
+               Processing                                                         
+                                           measurement.Sopressurecalibrationexperimentsareverynec-
+       Fig. 2. Experiment’s setup for measuring the cavity length of the          
+                                           essary.Figure5demonstratesthechangeprocessofthesensor’s
+       F–Psensor.ThesensorisanopticalfiberF–Ppressuresensor.Thelight cavitylengthduringthepressurizationandpressurereduction.
+       sourceisaGaussbroadbandlightsourceandthecentralwavelengthis By calculating the measurement data, the correlation coef-
+       1550nmwith the sample point of the spectrometerbeing512. ficient of the pressurization and decompression are 0.9934
+
+===== PAGE 4 / 4 =====
+                                                                                  
+                                                                                  
+        Research Article                    Vol.56,No.26/September102017/AppliedOptics 7453
+                                                                                  
+                                           analysis and simulation results show this algorithm can realize
+                                           high precision demodulation in a large dynamic demodulation
+                                           range,especially forlongcavitylengths.Theresults ofpractical
+                                           experiments also prove that this algorithm has a good stability,
+                                           high precision demodulation, nano-scale resolution, and good
+                                           application in sensing measurement. As a result, the improved
+                                           hill climbing algorithm could achieve a nano-scale resolution,
+                                           high measurement accuracy, high demodulation rate, and large
+                                           dynamicdemodulationrange.Ithasgreatapplicationprospects.
+                                             Theresultsofpressurecalibrationexperimentsshowthatthe
+                                           MEMS pressure sensor has great reproducibility. The correla-
+                                           tion coefficient of pressurization and pressure reduction is
+                                           0.9999 and the sensor’s sensitivity for pressure is about
+                                           2.5 nm∕KPa. So the MEMS pressure sensor has great perfor-
+                                           mance and application prospects.       
+       Fig. 4. F–P cavity length measurement result. 1 MPa pressure,              
+       room temperature, 2000 times successive measurements. See Funding. National Natural Science Foundation of
+       Data File 1, Ref. [14] for underlying values. China (NSFC) (51275373, 61575148); Natural Science
+                                           FoundationofHubeiProvince(2014CFA056);863Program,
+                                           National High Technology Research and Development
+                                           Program of China (2015AA043505).       
+                                           REFERENCES                             
+                                            1. A.Li,Y.Wang,Q.Hu,andW.Shieh,“Few-modefiberbasedoptical
+                                             sensors,”Opt.Express23,1139–1150(2015).
+                                            2. K.T.V.GrattanandT.Sun,“Fiberopticsensortechnology:anover-
+                                             view,”Sens.ActuatorsA82,40–61(2000). 
+                                            3. F.Xu,D.Ren,X.Shi,C.Li,W.Lu,L.Lu,L.Lu,andB.Yu,“High-
+                                             sensitivity Fabry–Perot interferometric pressure sensor based on a
+                                             nanothicksilverdiaphragm,”Opt.Lett.37,133–135(2012).
+                                            4. M.Jiang,Q.-S.Li,J.-N.Wang,Z.Jin,Q.Sui,Y.Ma,J.Shi,F.Zhang,
+                                             L.Jia,W.-G.Yao,andW.-F.Dong,“TiO nanoparticlethinfilm-coated
+                                                               2                  
+                                             opticalfiberFabry–Perotsensor,”Opt.Express21,3083–3090(2013).
+                                            5. L.Jin,B.-O.Guan,andH.Wei,“SensitivitycharacteristicsofFabry–
+                                             Perotpressuresensorsbasedonhollow-coremicrostructuredfibers,”
+                                             J.LightwaveTechnol.31,2526–2532(2013).
+                                            6. H.Yang,X.Tong,P.Hu,andQ.Guo,“Discretecavitylengthdemodu-
+       Fig.5. Stepsizeofpressurizationandpressurereductionis50kPa. lationalgorithm foropticalfiberF–Psensorbasedonvariablestep
+       Thepressurechangesfrom600kPato1000kPa.Theaccuracyofthe size mountain climbing search algorithm,” in Asia-Pacific Optical
+                                             SensorsConference(2016),paperTh4A.28.
+       pressureequipmentis0.1kPa.SeeDataFile2,Ref.[15]forunder-                   
+                                            7. T.Li,R.G.May,A.Wang,andR.O.Claus,“Opticalscanningextrinsic
+       lying values.                                                              
+                                             Fabry–Perotinterferometerforabsolutemicrodisplacementmeasure-
+                                             ment,”Appl.Opt.36,8858–8861(1997).   
+                                            8. M. Han, Y. Zhang, F. Shen, G. R. Pickrell, and A. Wang, “Signal-
+                                             processing algorithm for white-light optical fiber extrinsic Fabry–
+       and 0.9929, respectively. So the linearity of the fitting result Perotinterferometricsensors,”Opt.Lett.29,1736–1738(2004).
+       is good. The sensor’s sensitivities are 2.503 nm∕kPa and 9. S.Wang,T.Liu,J.Jiang,K.Liu,J.Yin,andF.Wu,“Birefringence
+       2.509 nm∕kPa, which are similar to the theoretical value dispersion compensation demodulation algorithm for polarized low-
+       2.64 nm∕kPa. The correlation coefficient of pressurization 10. c L o . h Y e u re a n n c d e K i . n C te h rf o e n ro g m ,“ e Im try p , r ” o O ve p d t. p L h e a t s t. e 3 c 8 a , r 3 ri 1 e 6 r 9 d – e 3 m 1 o 7 d 2 u ( la 2 t 0 io 1 n 3) a . lgorithm
+       andpressurereductionis0.9999,whichshowsthatthesensor forF–Popticalfiberhydrophone,”inProceedingsof11thInternational
+       hasgoodrepeatabilityandthedemodulationalgorithmcanbe ConferenceonSignalProcessing(2012),pp.2097–2101.
+       well used in sensing measurement.   11. S.M.Musa,R.O.Claus,J.H.Reed,R.L.Simpson,andA.Wang,
+                                             Real-Time Signal Processing and Hardware Development for a
+                                             Wavelength Modulated Optical Fiber Sensor System (Virginia
+       4. CONCLUSIONS                                                             
+                                             PolytechnicInstituteandStateUniversity,1997).
+                                           12. W.Peng,Z.Zhenbing,andX.Qianhe,“Algorithmforclusteringanaly-
+       Inconclusion,thevariablestepsizehillclimbingsearchmethod                   
+       is first used for the optical fiber F–P sensing demodulation to            
+                                             sisbyusingantsclimbinghill,”Comput.Eng.29,79–80(2003).
+                                           13. M. D. Rastrow, A. Sethy, S. Khudanpur, B. Ramabhadran, and M.
+       meet the urgent needs of scientific research and engineering. Dredze,“Hillclimbingonspeechlattices:anewrescoringframework,”
+       By changing the step size to do a series of climbing, it could in Proceedings of IEEE International Conference on Acoustics,
+       reduce the computation of the DGT demodulation algorithm                   
+                                             Speech,andSignalProcessing(2011),pp.5032–5035.
+                                           14. The result of continuous measurement, https://doi.org/10.6084/m9
+       and realize nano-scale resolution. When the search step is                 
+                                             .figshare.5332051.                   
+       0.1 nm, the amount of computation is 120 times less than                   
+                                           15. The result of pressure calibration experiments, https://doi.org/10
+       the general search method of 60,000 times. The theoretical .6084/m9.figshare.5332054.

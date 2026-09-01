@@ -1,0 +1,231 @@
+
+===== PAGE 1 / 3 =====
+                                                                                    
+                                                                                    
+        386 OPTICSLETTERS / Vol.34,No.3 / February1,2009                            
+                                                                                    
+                   Simple   heterodyne    laser interferometer                      
+                                                                                    
+                      with  subnanometer     periodic  errors                       
+                                                                                    
+                                                                                    
+            Ki-NamJoo,1,*JonathanD.Ellis,1JoW.Spronck,1PaulJ.M.vanKan,2andRobertH.MunnigSchmidt1
+                    1MechatronicSystemDesign,DepartmentofPrecisionandMicrosystemsEngineering,
+                            DelftUniversityofTechnology,Delft,TheNetherlands        
+                          2NMiVanSwindenLaboratoriumBV,Delft,TheNetherlands         
+                                *Correspondingauthor:k.joo@tudelft.nl               
+                     ReceivedOctober9,2008;revisedDecember10,2008;acceptedDecember11,2008;
+                        postedJanuary6,2009(Doc.ID102595);publishedJanuary30,2009   
+              Wedescribeasimpleheterodynelaserinterferometerthathassubnanometerperiodicerrorsandisappli-
+              cable to industrial fields. Two spatially separated beams can reduce the periodic errors, and the use of a
+              right-angle prism makes the optical configuration much simpler than previous interferometers. Moreover,
+              theopticalresolutioncanbeenhancedbyafactorof2,becausethephasechangedirectionisoppositebe-
+              tweenreferenceandmeasurementsignals.Experimentshavedemonstratedtheperiodicerrorsarelessthan
+              0.15nmowingtothefrequencymixingoftheopticalsource.Theimprovementsforreducingthefrequency
+              mixingoftheopticalsystemarealsodiscussed. © 2009OpticalSocietyofAmerica
+               OCIScodes: 120.3180,120.3930,120.3940.                               
+       The periodic errors limit the accuracy of heterodyne The two beams propagate to a nonpolarizing beam
+       laser interferometers because they deteriorate the splitter (NPBS) where they are split into two sets of
+       purity of the interference signals [1]. Since the peri- beams, reference and measurement beams. The ref-
+       odicerrorsofthelaserinterferometerswerefirstpre- erence beams are reflected by a right-angle prism
+       dicted [2], research pertaining to theoretical models (RAP), and the measurement beams are reflected by
+       and compensation techniques has been investigated a retroreflector (RR). The RR provides symmetry
+       and reported [3–5]. Recently, a real-time first-order with respect to a central point and causes the mea-
+       periodic error correction technique was validated un- surement beams to cross each other. The reference
+       der various experimental conditions indicating that beams,ontheotherhand,havethelinesymmetryby
+       the remaining periodic error is at the subnanometer theRAP.EachsetofbeamstravelsbacktotheNPBS
+       level [6]. In addition to compensation methods, non- andisrecombinedtocreatetwobeatsignalswiththe
+       polarizing optical configurations to eliminate the pe- frequencyoff ,whicharedetectedbythephotodetec-
+                                                    s                               
+       riodic errors have been designed [7–9]. The common tors, PD and PD .         
+                                                 1    2                             
+       feature of these interferometers is to use spatially While the RR is moving the measurement beams
+       separated beams that have different frequency com- are phase shifted, caused by the Doppler frequency
+       ponents. Essentially, the polarization states are shift,andaremeasuredbyPD andPD .Inthiscase,
+                                                               1    2               
+       never mixed; thus the nonlinearity can be signifi- the heterodyne signals from the photodetectors pro-
+       cantly reduced. However, the optical setups are com- vide the same amplitude, but the phase shift direc-
+       plicated because both beams propagate separately, tion is in the opposite direction between the two sig-
+       which requires additional optical components [7].Al- nals.ThusthetwointerferencesignalsfromPD and
+                                                                          1         
+       though several designs have been reported with het- PD can be expressed by cos(cid:1)2(cid:1)f t−2k(cid:2)L(cid:2) and
+                                             2                      s               
+       erodyne interferometers using an acousto-optic fre- cos(cid:1)2(cid:1)f t+2k(cid:2)L(cid:2), respectively, where k is the wave-
+                                                s                                   
+       quency shifter (AOFS) as a beam splitter [8,9], the number and (cid:2)L is the displacement of the target RR
+       small AOFS diffraction angle and their specific con-                         
+       figurations limit the applicability for displacement                         
+       measurements.                                                                
+        In this research, a simple and industry-adaptable                           
+       heterodyne laser interferometer designed to signifi-                         
+       cantly reduce periodic errors is proposed and tested.                        
+       Theperiodicerrorsareessentiallycausedbysplitting                             
+       and recombining two nonideal beams using polariz-                            
+       ing optics that are both nonideal and are sensitive to                       
+       alignment.Toeliminatetheperiodicerrorsintheop-                               
+       tical configuration, two beams with different optical                        
+       frequenciesshouldbespatiallyseparatedtoavoidthe                              
+       frequency and polarization mixing.                                           
+        Figure 1 shows the optical configuration that was                           
+       employedinthisinvestigation.Anopticalsourcepro-                              
+                                           Fig. 1. (Color online) Proposed optical configuration of a
+       videstwoparallelbeamstotheinterferometer,where                               
+                                           heterodyne laser interferometer to reduce the periodic
+       each beam has the same polarization state but has errors. NPBS, nonpolarizing beam splitter; PD , PD ,
+                                                                         1  2       
+       differentopticalfrequenciesf andf +f ,respectively. photodetectors.          
+                         0    0 s                                                   
+                      0146-9592/09/030386-3/$15.00 ©2009OpticalSocietyofAmerica     
+
+===== PAGE 2 / 3 =====
+                                                                                    
+                                                                                    
+                                         February1,2009 / Vol.34,No.3 / OPTICSLETTERS 387
+                                                                                    
+       while it is moving. When the phase difference be-                            
+       tweenthesignalsfromPD andPD ismeasured,the                                   
+                        1    2                                                      
+       total phase difference is 4k(cid:2)L, which is an effective                  
+       optical resolution of four. The beams are spatially                          
+       separated, and the optical paths are not overlapped                          
+       in the interferometer; therefore no leakage of light is                      
+       detected except ghost reflections. It should be noted                        
+       thatghostreflectionscanbeminimizedbyproperan-                                
+       tireflectioncoatingsandalignmenttechniques.More-                             
+       over, polarizing optics, which can generate the fre-                         
+       quencyand/orpolarizationmixing,arenotused.This                               
+       interferometer is totally insensitive to the misalign-                       
+       ment of optical components, although careful atten-                          
+       tion is required in the initial alignment owing to the                       
+       prism.                                                                       
+        To validate the effectiveness of the proposed inter-                        
+       ferometer,weperformedfeasibilityexperimentswith                              
+       a commercial heterodyne laser (Axiom 7701, Zygo                              
+       Corp.) as an optical source, as shown in Fig. 2. The                         
+       coaxial beams of the heterodyne laser are split into                         
+       twobeams,f andf (cid:1)f −f =20MHz(cid:2),byapolarizing                      
+               1   2 2 1                                                            
+       beam splitter (PBS), and the f beam passes through                           
+                          1                                                         
+       anotherAOFS, which induces the frequency shift, (cid:3)f,                    
+       of 19.9MHz. The diffracted beam (cid:1)f +(cid:3)f(cid:2) and the re-        
+                              1                                                     
+       flected beam (cid:1)f (cid:2) by the PBS are adjusted to be par-             
+                2                                                                   
+       allelbymirrorsandhavethesamepolarizationstate                                
+       after a polarizer. The final heterodyne frequency                            
+       split,f −(cid:1)f +(cid:3)f(cid:2),isapproximately100kHz.Although            
+           2  1                                                                     
+       theleakagefrequencycomponentofeachbeamisnot Fig. 3. Experimental result of the periodic error from the
+       completelyremovedfromtheschematicinFig.2,the phase quadrature measurement method and (b) Fourier
+       leakage ratio can be significantly reduced. The two transformed result of the periodic errors (a). The main er-
+                                           roriscausedbythefrequencymixingoftheopticalsource
+       beams can be expressed as                                                    
+                                           andothernoisesarefromghostreflectionsandelectronics.
+             E =exp(cid:3)j(cid:1)2(cid:1)f t(cid:2)(cid:4)+(cid:4) exp(cid:3)j(cid:1)2(cid:1)f t(cid:2)(cid:4),
+              1       2   1     1                                                   
+                                           PBS, and (cid:4) is the leakage ratio of theAOFS. In Eq.
+                                                  2                                 
+             E =exp(cid:3)j(cid:1)2(cid:1)(cid:1)f +(cid:3)f(cid:2)t(cid:2)(cid:4)+(cid:4) exp(cid:3)j(cid:1)2(cid:1)(cid:1)f (1) and [7], the leakage term causing the phase error
+              2       1      1       2     is (cid:4) (cid:4) exp(cid:3)j(cid:1)2(cid:1)f t(cid:2)(cid:4) and the phase error (cid:1)d(cid:5)(cid:2) and the
+                                             1 2      2                             
+                +(cid:3)f(cid:2)t(cid:2)(cid:4)+(cid:4) exp(cid:3)j(cid:1)2(cid:1)f t(cid:2)(cid:4) amplitude change (cid:1)dR/R(cid:2) are expressed from the
+                      2      1                                                      
+                                           phase quadrature measurement method in [7] as
+                +(cid:4) (cid:4) exp(cid:3)j(cid:1)2(cid:1)f t(cid:2)(cid:4), (cid:1)1(cid:2)
+                  1 2     2                                                         
+                                                     d(cid:5)=2(cid:4) (cid:4) sin(cid:1)2k(cid:2)L(cid:2),
+       where (cid:4) is the leakage ratio from the laser and the 1 2                
+            1                                                                       
+                                                     dR                             
+                                                       =2(cid:4) (cid:4) cos(cid:1)2k(cid:2)L(cid:2). (cid:1)2(cid:2)
+                                                          1 2                       
+                                                      R                             
+                                           From Eq. (2), the phase error is correlated with the
+                                           amplitude change and the periodic error cycles at
+                                           half the fringe frequency because the measured
+                                           phase is 4k(cid:2)L. Figure 3 shows the measurement re-
+                                           sults of the periodic error in the system and the Fou-
+                                           riertransformedresult.Theamplitudeandthephase
+                                           were measured by a commercial lock-in amplifier
+                                           (5210, Signal Recovery), while the RR was moved by
+                                           apiezoelectricstage.Theoverallperiodicerrorswere
+       Fig.2. (Coloronline)Experimentalsetup.AOFS,acousto- calculated using Eq. (2) to be estimated below
+       optic frequency shifter; M 0 , M 1 , M 2 , M 3 , angle-adjusted 0.15nminFig.3(a),andthedominantperiodicerror
+       mirrors; NPBS, nonpolarizing beam splitter; RAP, right- was caused by the ratios (cid:4) and (cid:4) with half the pe-
+       angle prism; RR, retroreflector; PD , PD , reference and 1 2                 
+                            R  M           riod frequency and the amplitude of ±33 pm in Fig.
+       measurement photodetectors; PBS, polarizing beam split-                      
+                                           3(b). The sources of remaining peaks with the period
+       ter;P,polarizer.Theinletistheconfigurationoftheoptical                       
+       sourcewithtwospatiallyseparatedbeamsonthesideview. frequencyinFig.3(b)arefromtheparasiticreflection
+       Notethatthesolidlineisthespatiallyupperbeam,andthe of the optical components and electrical demodula-
+       dottedlineisthelowerbeam.           tion noise.                              
+
+===== PAGE 3 / 3 =====
+                                                                                    
+                                                                                    
+       388 OPTICSLETTERS / Vol.34,No.3 / February1,2009                             
+                                                                                    
+                                           PBS and into a fiber coupler. Two fiber splitters are
+                                           used, and one arm from each set is combined with a
+                                           second into one fiber coupler to recombine the beams
+                                           to provide feedback control to obtain a stabilized fre-
+                                           quency. The heterodyne frequency is then f −(cid:1)f
+                                                                          2  1      
+                                           +2(cid:3)f(cid:2), and it is used for frequency stabilization. The
+                                           orthogonality of the two longitudinal modes, polar-
+                                           ization characteristic of the AOFS and passing
+                                           through the AOFS twice, should reduce the ratio of
+                                           leakage frequency components.            
+                                             To summarize, a simple heterodyne laser interfer-
+                                           ometer was proposed to remove the periodic error in-
+       Fig. 4. (Color online) Proposed optical source to obtain a herent to laser interferometers. The reference and
+       frequency-stabilized laser with two parallel beams to re- measurement beams are spatially separated to
+       duce frequency mixing. PBS, polarizing beam splitter; prevent any frequency mixing, and the use of a
+       AOFS,acousto-opticfrequencyshifter;QWP,quarter-wave                          
+                                           right-angle prism makes it possible to construct a
+       plate; M, mirror; AFC, angled fiber coupler; PD,                             
+                                           simple interferometer setup and enhance the optical
+       photodetector.                                                               
+                                           resolution by a factor of 2. Experimental results
+        To fully verify the theoretical elimination of peri- showed the periodic error to be less than 0.15nm,
+       odic errors, the laser source must be free from fre- which was dominated by the frequency mixing of the
+       quency mixing. Employing twoAOFSs with different optical source. Several options for alternative optical
+       frequency shifts has been shown to remove the fre- sources to reduce the frequency mixing were also
+       quency mixing [7]. This laser system, however, in- proposed and discussed.   
+       creases the overall cost, which is not desirable for                         
+       both research and industrial fields. A frequency- This work was supported by the Dutch
+       stabilizedandanoffset-lockedlasersetisanotherpo- Innovatiegerichte Onderzoeksprogramma’s (project
+       tential alternative to improve the performance of the 04001) and NMi in the Netherlands. The authors
+       interferometer, although the phase jitter noise be- thank Eric Buice for his comments on this review.
+       tween the two lasers remains [10].                                           
+        An alternative scheme to obtain two parallel References                     
+       beams with minimal frequency mixing is shown in                              
+                                            1. N.Bobroff,Meas.Sci.Technol.4,907(1993).
+       Fig. 4. The laser source is a two-longitudinal mode                          
+                                            2. R.C.Quenelle,Hewlett-PackardJ.34,10(1983).
+       He–Ne laser tube that has approximately 600MHz                               
+                                            3. W.HouandG.Wilkening,Precis.Eng.14,91(1992).
+       frequency difference, f −f , and orthogonal polariza-                        
+                     2 1                    4. T.Eom,T.Choi,K.Lee,H.Choi,andS.Lee,Meas.Sci.
+       tion states. This initial beam is split into two by a Technol.13,222(2002).  
+       PBS and the reflected beam, f , passes through a po- 5. S. J. A. G. Cosijns, H. Haitjema, and P. H. J.
+                          1                                                         
+       larization sensitive AOFS (cid:1)(cid:3)f(cid:5)300MHz(cid:2), where the Schellekens,Precis.Eng.26,448(2002).
+       diffractedbeamisorthogonallypolarizedtotheinput 6. T. L. Schmitz, D. Chu, and L. Hoouck III, Meas. Sci.
+       beam. It is reflected by a mirror passing through a Technol.17,3195(2006).   
+                                            7. C. Wu, J. Lawall, and R. D. Deslattes, Appl. Opt. 38,
+       quarter-wave-plate (QWP) twice and then back                                 
+                                             4089(1999).                            
+       through the AOFS. This beam then passes through                              
+                                            8. T.L.SchmitzandJ.F.Beckwith,J.Mod.Opt.49,2105
+       the initial PBS and into a fiber coupler. Even though                        
+                                             (2002).                                
+       the leakage beam reflected by the PBS goes back to                           
+                                            9. J. Lawall and E. Kessler, Rev. Sci. Instrum. 71, 2669
+       the laser tube, the laser stabilization is not affected                      
+                                             (2000).                                
+       owingtotheshiftedopticalfrequency[9].Thesecond 10. J. Lawall and J. M. Pedulla, Rev. Sci. Instrum. 72,
+       beam from the source, f , passes through the initial 2879(2001).             
+                      2                                                             

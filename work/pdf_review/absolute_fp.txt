@@ -1,0 +1,292 @@
+
+===== PAGE 1 / 4 =====
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+        Optical  scanning    extrinsic Fabry–Perot                                  
+        interferometer    for absolute   microdisplacement                          
+                                                                                    
+        measurement                                                                 
+                                                                                    
+                                                                                    
+                                                                                    
+        Tianchu Li, Russell G. May, Anbo Wang, and Richard O. Claus                 
+                                                                                    
+                                                                                    
+                                                                                    
+                         We report an optical-scanning, dual-fiber, extrinsic Fabry–Perot interferometer system for absolute
+                         measurementofmicrodisplacement. Thesysteminvolvestwoair-gappedFabry–Perotcavities,formed
+                         byfiberendfaces,functioningassensingandreferenceelements. Takingthescanningwavelengthas
+                         aninterconvertertocomparethegaplengthofthesensingheadwiththereference-cavitylengthyields
+                         the absolute measurement of the sensing-cavity length. The measurement is independent of the
+                         wavelength-scanning accuracy, and the reference-cavity length can be self-calibrated simply by one’s
+                         changingthesensing-headlengthbyanaccuratevalue. ©1997OpticalSocietyofAmerica
+                                                                                    
+                                                                                    
+        Thesensingofdisplacementisgenerallythebasisfor placement. The basic principle is to use a
+        measurements of various physical qualities, such as wavelength-tunable source to illuminate two EFPI’s
+        strain, pressure, vibration, and temperature. In simultaneously, one as the sensing head and the
+        1983 Kersey et al.1 were among the first to demon- other as the reference cavity. If the length of the
+        strate the use of an optical-fiber Fabry–Perot (cid:126)FP(cid:33) reference cavity is precalibrated and remains con-
+        interferometer for measuring small displacement. stant, and the scanning wavelength is taken as an
+        In 1991 Murphy et al.2 proposed and demonstrated interconvertertocomparethegaplengthofthesens-
+        anextrinsicFabry–Perotinterferometric(cid:126)EFPI(cid:33)sen- ing head with the reference-cavity length, an unam-
+        sor. In this system two EFPI’s were configured to biguous measurement of the sensing-head length
+        produce two sets of output signals in quadrature may thus be obtained.      
+        phase so that bidirectional fringe counting could be ForastandardEFPIthetwobeams,reflectedfrom
+        obtained. The bidirectional fringe counting could thetwofiberendsinthesensingcavity,interferewith
+        improve the dynamic characteristic of the EFPI for eachother,andthesignalreceivedatthedetectorcan
+        measurements in a perturbation environment. Re- be expressed as5            
+        cently there has been a great interest in absolute                          
+                                                    I (cid:53)I cos2(cid:64)(cid:126)(cid:70) (cid:49)(cid:70) (cid:33)(cid:121)2(cid:35), (1)
+        displacement measurement by use of white-light fi- (cid:126)(cid:108),L(cid:33) o(cid:126)(cid:108)(cid:33) s o
+        ber interferometers3,4 or optical-scanning EFPI’s.5,6 (cid:70) (cid:53)2knL(cid:53)(cid:126)4(cid:112)Ln(cid:33)(cid:121)(cid:108), (2)
+        In general, an unambiguous displacement measure- S                          
+        ment, which does not require a reference measure- where (cid:108) is the free-space wavelength, L is the FP
+        menttobemadebeforetheactualsensingprocedure, cavity length, I is the intensity received at the
+                                                      (cid:126)(cid:108),L(cid:33)  
+        ispreferableinpracticalapplications. Inthispaper detectorasafunctionof(cid:108)andL,I representsthe
+                                                                  o(cid:126)(cid:108)(cid:33)
+        we report an improved optical-scanning dual EFPI spectrum intensity, (cid:70) is the phase difference be-
+                                                          s                         
+        (cid:126)DEFPI(cid:33) sensing system for measuring microdis- tweenthetwobeams,(cid:70) istheinitialphase,nisthe
+                                                           o                        
+                                            refractive index of the medium filling the FP cavity,
+                                            and k (cid:53) 2(cid:112)(cid:121)(cid:108).
+         WhenthisresearchwasdonealltheauthorswerewiththeFiber Ifthewavelengthisscannedfrom(cid:108) to(cid:108) whilethe
+                                                                   1  2             
+        &Electro-OpticsResearchCenter,BradleyDepartmentofElectri- cavity length remains constant, we have, from Eq.
+        calEngineering,VirginiaPolytechnicInstituteandStateUniver- (cid:126)2(cid:33),
+        sity,Blacksburg,Virginia24061-0111. T.LiisnowwithLength                     
+                                                     (cid:42)  (cid:42)             
+        Division,NationalInstituteofMetrology,Beijing100013,China. (cid:108)2 (cid:108)2
+         Received 21 February 1997; revised manuscript received 23 (cid:68)(cid:70) (cid:53) d(cid:70) (cid:53)4(cid:112)L (cid:126)(cid:50)n(cid:121)(cid:108)2(cid:33)d(cid:108)
+                                                   S      S                         
+        June1997.                                                                   
+         0003-6935(cid:121)97(cid:121)348858-04$10.00(cid:121)0                     
+                                                      (cid:108)1 (cid:108)1         
+         ©1997OpticalSocietyofAmerica               (cid:53)4(cid:112)Ln(cid:68)(cid:108)(cid:121)(cid:126)(cid:108) (cid:108) (cid:33), (3)
+                                                            1 2                     
+        8858 APPLIEDOPTICS(cid:121)Vol.36,No.34(cid:121)1December1997               
+
+===== PAGE 2 / 4 =====
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                            Fig.2. Gratingwavelengthscanner(cid:126)GWS(cid:33). L1,L2,GRINlens;
+                                            G,grating,P,Galvoscannershaft.          
+                                                                                    
+        Fig. 1. Dual extrinsic FP interferometer (cid:126)DEFPI(cid:33). GWS, grat- LED with full-width at half-power of (cid:59)60 nm. A
+        ingwavelengthscanner;C1,C2,C3,couplers;T,translationstage; 21°01(cid:57) blazed, 600-line(cid:121)mm diffraction grating G, as
+        D1,D2,detectors.                    an optical-dispersion element, was mounted on the
+                                            shaftPofaGalvoscannerconstitutingtheGWS. The
+                                            broadbandspectrumlightfromtheLEDiscollimated
+        where(cid:68)(cid:70) isthephasechangeproducedbythescan- by a graded index (cid:126)GRIN(cid:33) lens, L1, and diffracted by
+              S                                                                     
+        ningofthewavelengthfrom(cid:108) to(cid:108) . Herewehave thegratingattheblazeangle. Partofthediffracted
+                           1  2                                                     
+        assumed that the refractive index remains a con- lightiscollectedbyanotherGRIN,L2,andfocusedinto
+        stant. The unambiguous cavity length L can then the receiving fiber. For a given grating, the spectral
+        be calculated.                      widthofthelightfocusedintothereceivingfiber. For
+          Equation (cid:126)3(cid:33) indicates that, to yield an accurate agivengrating,thespectralwidthofthelightfocused
+        measurementoftheFPcavitylength,thewavelength into the receiving fiber is related to the distance be-
+        scanning is required to be repeatable. In practice, tween the grating and the fiber as well as to the nu-
+        accurate wavelength scanning is always difficult to mericalapertureoftheGRINlens–fiberassembly. In
+        achieve and maintain with either a monochromator, theexperimentthespectralwidthwasmeasuredtobe
+        aCCDdetectorarray-basedopticalspectrumanalyz- 6.3nm. Whenapreciselygeneratedtriangulardriv-
+        er,5 or with a tunable laser.6 Instead of measuring ing current with a period of 0.2 s is applied to the
+        distancedirectly,itmaybemorepracticaltomeasure Galvo,itturnsthegratingandhencetunesthewave-
+        the FP length relative to the length of a fixed FP length of the light coupled into the receiving fiber.
+        cavity by the wavelength-scanning method. Thewavelength-scanningrangewas58nm.
+          Figure 1 shows the experimental setup of the From each EFPI a group of fringes is produced
+        optical-scanning DEFPI. Two fiber EFPI’s are con- whenthewavelengthisscannedfrom(cid:108) to(cid:108) accord-
+                                                                    1  2            
+        nectedtotheoutputportsoftwocouplersC2andC3. ingtoEqs.(cid:126)1(cid:33)–(cid:126)3(cid:33). Usingsubscript1and2todenote
+        EachEFPIwasconstructedwithtwoperpendicularly thereferenceandthesensingEFPI’s,weobtainfrom
+        cleaved fiber ends inserted, face to face, into a silica Eq. (cid:126)3(cid:33), by dividing the phase changes of these two
+        hollow tube, forming a low-finesse FP cavity.1 The independent EFPI’s,      
+        input–outputfiberinthesensingEFPIwasepoxiedto                               
+        thehollowtubeend,andthesensingfiberwasallowed (cid:68)(cid:70) 2(cid:121)(cid:68)(cid:70) (cid:53)L (cid:121)L . (4)
+                                                        S   S1  2 1                 
+        to move freely inside the hollow tube. The sensing                          
+        fiberwasattachedtoatranslationstage T toprovide Whatisinterestingandperhapsmoresignificantfor
+        accuratedisplacementfortheexperimentsandforthe the measurement is that Eq. (cid:126)4(cid:33) indicates that the
+        self-calibrationofthereference-cavitylength(cid:126)detailed measurementofsensing-cavitylengthL isindepen-
+                                                                     2              
+        asfollows(cid:33). ForthereferenceEFPI,bothfiberswere dent of wavelength (cid:108) , (cid:108) , and (cid:68)(cid:108). That means we
+                                                         1 2                        
+        epoxiedtothetwoendsofthehollowtubetomaintain donotneedthelightsourcetobetunedaccuratelyor
+        a stable air cavity. The Fresnel reflections from the repeatably.           
+        fiber–air interface (cid:126)reference surface(cid:33) and the reflec- In practice, the phase information can be derived
+        tion from the air–fiber interface (cid:126)sensing surface(cid:33) in from an analysis of the corresponding interference
+        each EFPI interfere in the input–output fiber. The fringes. The fringe counting produced during one
+        interferencesignal isdetectedby thephoto diodes D optical tuning cycle for each cavity is given as
+                                         1                                          
+        andD . ThelightfromthetunableLED-gratingas-                                 
+            2                                                                       
+        semblysource(cid:64)gratingwavelengthscanner(cid:126)GWS(cid:33),de- m (cid:53)(cid:68)(cid:70) (cid:121)2(cid:112)(cid:53)e (cid:49)f (cid:49)f , (5)
+                                                     i   si   i  i,1 i,2            
+        tailsgivenasfollows(cid:35)issplitintotwobeamsbycoupler                     
+        C1toilluminateEFPI1andEFPI2throughC2andC3. where m is the number of the fringes (cid:126)i (cid:53) 1 for the
+                                                 i                                  
+          Recently, tunable optical-fiber lasers have been re- reference cavity and i (cid:53) 2 for the sensing head(cid:33), e is
+                                                                           i        
+        ported,7 and tunable laser diodes have become com- theintegerpartofm,andf andf arethefractions
+                                                         i   i1  i2                 
+        mercially available. Their performance is ideal to before the first fringe peak and after the last peak,
+        support the wavelength-scanning DEFPI reported in respectively.             
+        thispaper,buttheircostwouldprohibitmostpractical Theabsolutegaplength,L ,ofthesensingEFPIis
+                                                              2                     
+        applications. We thus developed the LED-grating- derived as                 
+        Galvoscannerspectrumscanningassemblyillustrated                             
+        inFig.2. Thelightsourceisa1300-nmedge-emitting L (cid:53)L m (cid:121)m (cid:53)L (cid:126)e (cid:49)f (cid:49)f (cid:33)(cid:121)(cid:126)e (cid:49)f (cid:49)f (cid:33). (6)
+                                             2  1 2 1  1 2 2,1 2,2 1 1,1 1,2        
+                                            1December1997(cid:121)Vol.36,No.34(cid:121)APPLIEDOPTICS 8859
+
+===== PAGE 3 / 4 =====
+                                                                                    
+                                                                                    
+                                                                                    
+        The first and the last fractions of the fringes can be                      
+        repeatedlyinterpolated,orsubdivided,tofurtherim-                            
+        prove the measurement resolution, either by elec-                           
+        tronicsorbycomputersoftware. Forexample,ifwe                                
+        assume the approximate linearity of the wavelength                          
+        scanning versus time and denote the optical-                                
+        scanning time for a fraction, for example, f , as t                         
+                                   2,1  2,1                                         
+        andthescanningtimefor itsfirstadjacentcomplete                              
+        fringe e as t , we thus have approximately                                  
+             2,1 2,1,0                                                              
+                   f (cid:121)e (cid:53)t (cid:121)t . (7)                          
+                    2,1 2,1 2,1 2,1,0                                               
+        The corresponding time is taken to subdivide the                            
+        fringe fraction.                                                            
+          For the absolute FP cavity-length measurement,                            
+        the reference-cavity length L has to be accurately                          
+                           1                                                        
+        calibrated. This can be done by using an accurate                           
+        displacement actuator (cid:126)like the translation stage in                
+        Fig. 1(cid:33) to change the gap length in the sensing head                 
+        by a known distance. With the two sets of fringes,                          
+        before and after the calibration displacement,                              
+        countedforeachEFPIandtheaccuratevalueofthis                                 
+        displacement, from Eq. (cid:126)6(cid:33) we have                           
+              L (cid:53)(cid:126)L (cid:57)(cid:50)L (cid:33)(cid:121)(cid:126)m (cid:57)(cid:121)m (cid:57)(cid:50)m (cid:121)m (cid:33)
+               1  2   2  2  1   2  1                                                
+                (cid:53)(cid:68)L (cid:121)(cid:126)m (cid:57)(cid:121)m (cid:57)(cid:50)m (cid:121)m (cid:33), (8)
+                   2  2  1   2 1                                                    
+        wheretheprimesuperscriptdenotesthevaluesafter                               
+        thecalibration,whereasthevalueswithouttheprime                              
+        represent the values before the calibration displace-                       
+        ment, and (cid:68)L (cid:53) L (cid:57) (cid:50) L .                        
+                 2  2   2                                                           
+          The experimental fringes from the optical-                                
+        scanning DEFPI are shown in Fig. 3. The lower                               
+        trace in each figure is the driving current applied to                      
+        the Galvo scanner, and the upper trace represents                           
+        the interference fringes. Figure 3(cid:126)a(cid:33) is the fringes         
+        fromthereferenceEFPIwithacavitylengthof81.4                                 
+        (cid:109)m,whichwascalibratedbytheaboveself-contained                       
+        procedure with an accuracy of 1 (cid:109)m, limited by the                  
+        accuracyofthetranslationstage(cid:126)Fig.1(cid:33). Theupper               
+        fringecurvesinFigs.3(cid:126)b(cid:33)and3(cid:126)c(cid:33)arefromthesens- 
+        ing head, and the cavity lengths are derived to be                          
+        106.1 and 148.3 (cid:109)m, respectively.                                   
+          The experimental curves in Fig. 3 prove the pre-                          
+        diction of Eqs. (cid:126)3(cid:33) and (cid:126)6(cid:33) that the fringe number or
+        the fringe frequency is proportional to the cavity                          
+        length. The results shown in Figs. 3(cid:126)b(cid:33) and 3(cid:126)c(cid:33)
+        were obtained from the sensing channel shown in                             
+        Fig. 1 with different cavity lengths. These two                             
+        curves show that the amplitude of the fringes de-                           
+                                            Fig. 3. Wavelength-scanning fringes from the DEFPI. The
+        creasesrapidlywiththeincreaseofthecavitylength                              
+                                            lower trace in each figure is the driving current applied to the
+        owing to the divergence of the light beam from the                          
+                                            Galvototunethewavelength,andtheuppertracerepresentsthe
+        fiber end in the EFPI sensors.1,3   interferencefringesversusthewavelength(cid:126)a(cid:33)fromthereference
+          From10measurementdatatherepeatabilityisde- cavity with a cavity length of 81.4 (cid:109)m and (cid:126)b(cid:33) and (cid:126)c(cid:33) from the
+        terminedtobe0.2(cid:109)m,whichismainlylimitedbythe                         
+                                            sensingheadwithdifferentmeasuredgaplengths.
+        low signal-to-noise ratio of the fringes, partially be-                     
+        cause of the low output power from the LED GWS.                             
+        Considerthereference-cavitycalibrationaccuracyof1 system’ssignal-to-noiseratiocouldbesignificantlyim-
+        (cid:109)m mentioned above; the whole measurement accu- proved.             
+        racy of the sensing length was estimated to be 1 (cid:109)m. AsetofexperimentaldataisplottedinFig.4. The
+        Iftheneweconomictunablelaserdiode’s,orthenext horizontal axis represents the known increments of
+        generationoftunablefiberlasers7couldbeapplied,the thesensinglength,drivenbythetranslationstageas
+        8860 APPLIEDOPTICS(cid:121)Vol.36,No.34(cid:121)1December1997               
+
+===== PAGE 4 / 4 =====
+                                                                                    
+                                                                                    
+                                                                                    
+                                            stablelengthofthereferencecavity,accuratewave-
+                                            length scanning, which functions only as an inter-
+                                            converter, is not necessary. The sensing scheme
+                                            described in the paper could thus be used in those
+                                            applications for which low-cost long-term monitor-
+                                            ing is required.                        
+                                             The authors acknowledge the Virginia Center for
+                                            Innovative Technology for the supporting the re-
+                                            search financially.                     
+                                            References                              
+                                            1. A. D. Kersey, D. A. Jackson, and M. Corko, “A simple fiber
+                                             Fabry–Perotsensor,”Opt.Commun.45,71–74(cid:126)1983(cid:33).
+        Fig.4. Experimentalplotoftheratioofthesensing-gaplength 2. K. A. Murphy, M. F. Gunther, A. M. Vengsarkar, and R. O.
+        overthereference-cavitylengthversusthereference-cavitylength; Claus,“Quadraturephase-shifted,extrinsicFabry–Perotopti-
+        measurednormalizedsensor-cavitylengthversusthereadoutfrom calfibersensors,”Opt.Lett.16,273–275(cid:126)1991(cid:33).
+        thetranslationstage. Thehorizontalaxisrepresentstheknown 3. T.Li,A.Wang,K.Murphy,andR.Claus,“White-lightscanning
+        incrementsofthesensinglength. Thereference-cavitylengthL fiber Michelson interferometer for absolute position–distance
+                                         1                                          
+        is81.4(cid:109)m.                    measurement,”Opt.Lett.20,785–787(cid:126)1995(cid:33).
+                                            4. C. Belleville and G. Duplain, “White-light interferometric
+                                             multimode fiber-optic strain sensor,” Opt. Lett. 18, 78–80
+        shown in Fig. 1. The cavity length L of the refer- (cid:126)1993(cid:33).   
+                                 1                                                  
+        ence sensor was 81.4 (cid:109)m. The vertical axis is the 5. B.Fogg,A.Wang,M.Miller,K.Murphy,andR.Claus,“Optical
+        ratio of the measured sensing length versus these fibersensorforabsolutemeasurement,”inFiberOpticSensor-
+        given increments.                                                           
+                                             BasedSmartMaterialsandStructures,R.O.Claus,ed.(cid:126)Insti-
+          The optical-scanning dual-fiber EFPI (cid:126)DEFPI(cid:33)               
+                                             tuteofPhysics,Bristol,England,1992(cid:33),pp.51–54.
+                                            6. D. Wang, Y. Ning, A. Palmer, K. Grattan, and K. Weir, “An
+        systemreportedinthispaperhasbeenprovedtobe                                  
+                                             opticalscanningtechniqueinawhitelightinterferometricsys-
+        a simple structure, single-end operation, self- tem,”IEEEPhoton.Technol.Lett.6,855–857(cid:126)1994(cid:33).
+        calibrated, absolute measurement technique with 7. G. Ball and W. Morey, “60 mW 1.5 (cid:109)m single-frequency low-
+        medium accuracy. Since the absolute measure- noisefiberlaserMOPA,”IEEEPhoton.Technol.Lett.6,192–
+        ment is obtained based on the comparison with the 194(cid:126)1994(cid:33). 
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                                                                    
+                                            1December1997(cid:121)Vol.36,No.34(cid:121)APPLIEDOPTICS 8861
+                                                                                    
+                                                                                    

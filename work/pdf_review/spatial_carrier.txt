@@ -1,0 +1,1178 @@
+
+===== PAGE 1 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                                                              79          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+              Spatial-carrier      fringe-pattern                         
+                                                                          
+              analysis    and    its applications                         
+                                                       to                 
+                                                                          
+              precision     interferometry       and                      
+                                                                          
+              profilometry:       An   overview                           
+                                                                          
+                                                                          
+                                                                          
+              Mitsuo Takeda                                               
+              University of Electro-communications, Department of Communication and
+              Systems Engineering, 1-5-1, Chofugaoka, Chofu, Tokyo, 182 Japan
+                                                                          
+                                                                          
+                                                                          
+              Abstract. The principle of the spatial-carrier heterodyne technique is described with emphasis
+              on fringe-pattern analysis. Characteristics of the spatial-carrier technique and the temporal-
+              carrier technique are compared, and the relationship between the two techniques is clarifed.
+              Recent developments in the spatial-carrier fringe-pattern analysis techniques and their applica-
+              tion areas are reviewed.                                    
+              Keywords. Interferometry, profilometry, fringe-pattern analysis, heterodyne, Fourier
+              transform.                                                  
+                                                                          
+                                                                          
+           1. Introduction                                                
+                                                                          
+            At present, two different approaches are being followed in heterodyne interfer-
+           ometry 1, 2. The first one, shown on the left in Fig. 1, is the temporal-carrier
+           technique 1-4, which uses a time-varying interferogram of the form
+                                                                          
+                g(x, y; t)= a(x, y)+ b(x, y) cos 2~Z/ot + ¢(x, y), (1)    
+           where a(x, y) is the background intensity, b(x, y) the fringe amplitude, ¢(x, y) a
+           phase to be determined, and fo is the temporal-carrier frequency introduced by a
+           frequency-shifting device 3. The fringe-scan or phase-shift interferometry 4 can
+           be considered as a discrete-time version of the temporal-carrier technique where
+           the time-varying interferogram is sampled over a single period at time intervals
+                                                                          
+                                                                          
+                                                                          
+           Elsevier                                                       
+           Industrial Metrology 1 (1990) 79-99                            
+                                                                          
+           0921-5956/90/$3.50 © 1990. Elsevier Science Publishers B.V.    
+                                                                          
+
+===== PAGE 2 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+          80           M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+                     TEMPORAL CARRIER   SPATIAL CARRIER                   
+                                                                          
+                                       g(x,y) : a(x,y) + b(x,y)e0s[2~f0x÷~(x,y)]
+                                          g(x,y)                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                      Y                                   
+                                                                          
+                   s             gtx,y;t)                                 
+                  Y                                                       
+                   g(x,~;t) : a(x,y) ÷ b(x,y)c0s[2nf,t+~(x,y)]            
+                    Fig. 1. Temporal-carrier technique and spatial-carrier technique.
+                                                                          
+           At = 1/Nfo, so that                                            
+                                                                          
+                g(x, y; nAt) = a(x, y) + b(x, y) cos[2rcn/N + c~(x, y)]. (2)
+            The second method, shown on the right in Fig. 1, is the spatial-carrier technique
+           which uses a single interferogram of the form                  
+                                                                          
+                g(x, y) = a(x, y) + b(x, y) cos [2rCfox + qS(x, y)], (3)  
+                                                                          
+           wherefo is the spatial-carrier frequency generated by tilting the reference wavefront.
+            Among the numerous papers that have been published on heterodyne interfer-
+           ometry in the last decade, the majority were dealing with the temporal-carrier
+           technique, and most of the precision interferometers now commercially available
+           are based on this technique. The purpose of this paper is to shed light on the
+           alternative approach, the spatial-carrier technique, which appears to have received
+           less attention in spite of its great advantages in certain application areas. We first
+           describe the principle of the spatial-carrier technique, comparing and relating it to
+           that of the temporal-carrier technique. Then we review the recent developments in
+           the technique, and introduce some of its application areas.    
+                                                                          
+                                                                          
+                        Mitsuo Takeda is Professor of Communication and Systems Engineering
+                        at the University of Electro-communications (UEC), Tokyo, Japan. He
+                        received the BE degree in Electrical Engineering from UEC in 1969, and
+                        the ME and the DEng degrees in Applied Physics from University of Tokyo,
+                        respectively in 1971 and 1974. After working for Canon Inc., he joined the
+                        faculty of UEC in 1977. During 1985 he was a visiting scholar at Stanford
+                        University. His research interests are in the areas of optical metrology and
+                        optical information processing. For the years 1983-1984, he served on the
+                        Board of Editors of the Japanese Journal of Applied Physics, and he is
+                        currently a member of the Editorial Boards of the Japanese Journal of
+                        Optics (KOGAKU) and Industrial Metrology. He is a member of the
+                        Optical Society of America, SPIE, the Japan Spociety of Applied Physics,
+           and the Optical Society of Japan.                              
+
+===== PAGE 3 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                        M. Takeda / Spatial-carrierf ringe-pattern analysis 81
+                                                                          
+           2. Spatial-carrier technique                                   
+                                                                          
+            In this section, we first explain how the spatial-carrier technique is related to
+           the temporal-carrier technique, and then describe its advantages and disadvantages
+           relative to the temporal-carrier technique.                    
+            A common way of generating the spatial-carrier frequency is to give a relatively
+           large tilt to the reference mirror as shown in Fig. 2 (left). Let us focus our attention
+           on a small area of the interferogram which extends just over one period of the
+           spatial-carrier frequency. The middle part of Fig. 2 shows a magnification of the
+           corresponding part of the fringe and the tilted mirror. Suppose we sample this
+           fringe at M points and consider the optical path lengths to and from the tilted
+           mirror at each sample point. Then we note that the role played by the tilted mirror
+           is equivalent to that played by multiple mirror segments each of which is shifted
+           by 2/2M relative to its neighbors, as shown in Fig. 2 (right). Provided that the
+           phase and the amplitude of the wave to be measured do not change appreciably
+           within the period of the spatial-carrier frequency, such a tilted mirror system works
+           as a multi-channel parallel phase-shift interferometer, in which all the phase shifts
+           are encoded simultaneously on the spatial position in the single interferogram
+           rather than sequentially on multiple time-stamped interferograms obtained by
+           scanning a movable mirror. This spatial parallelism is an essential feature of the
+           spatial-carrier technique, which makes possible the heterodyne interferometric
+           measurement of very fast phenomena.                            
+            Relative advantages and disadvantages of the spatial-carrier technique in com-
+           parison with the temporal-carrier technique may be summarized as follows:
+                                                                          
+           Advantages                                                     
+           (1)  Only one interferogram is needed while the temporal-carrier technique
+                requires multiple interferograms taken at different times.
+           (2)  No special devices are needed for carrier generation whereas the temporal-
+                carrier technique requires a frequency- or phase-shifting device.
+                                                                          
+                                                                          
+                                                                          
+                                               t 2 ~                      
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                       >X                 
+                                 I   M-I        2   M-I                   
+                                                                          
+                    Fig. 2. Relation between spatial- and temporal-carrier techniques.
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 4 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           82           M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+           Disadvantages                                                  
+           (1)  The detector array must have a higher spatial resolution than in the tempo-
+                ral-carrier technique.                                    
+           (2)  The spatial distribution of detector sensitivities must be uniform over the
+                array.                                                    
+                                                                          
+            Clearly, the requirements on the detector array are more stringent in the spatial-
+           carrier technique. This may have limited the usefulness of the technique at the time
+           when such a detector array was not available, but the recent rapid development
+           in fabrication technology for high-resolution image sensors seems to be changing
+           the situation more in favor of the spatial-carrier technique.  
+                                                                          
+           2. Spatial-carrier fringe-pattern analysis                     
+                                                                          
+            The principal problem in (cid:127)nge-pattern analysis is how to obtain the phase
+           information ~b(x, y) from a given fringe pattern, by separating it from the other
+           terms a(x, y) and b(x, y). This can be done rather easily in the temporal-carrier
+           technique, since it employs time t as an extra parameter so that the problem is
+           reduced to reading the phase of a pure sinusoidal signal on the time coordinate,
+           with the space coordinates fixed at the point to be probed. The spatial-carrier
+           technique requires slightly more sophisticated processing since all the signals are
+           mixed up in the same space coordinates.                        
+                                                                          
+           2.1. Frequency-domain processing (Fourier transform method)    
+                                                                          
+            First we briefly review the Fourier transform method according to our earlier
+           paper 5. For simplicity, we restrict ourselves to one-dimensional processing, but
+           it is straightforward to extend the analysis to the case of two-dimensional process-
+           ing. We rewrite eqn. (3) in the following form for convenience of explanation:
+                                                                          
+                g(x, y) = a(x, y) + c(x, y) exp (2rfifox) + c(x, y)*exp (- 2rdfox) , (4)
+           with                                                           
+                                                                          
+                c(x, y) = ½b(x, y) exp i~b(x, y),             (5)         
+           where * denotes the complex conjugate. We take the Fourier transform of eqn. (4)
+           with respect to x, which gives                                 
+                                                                          
+                G(fx, y) = A(fx, y) + C(fx -fo, Y) + C*(-(fx + fo), Y), (6)
+           where the upper-case letters denote the Fourier spectra and fx is the spatial fre-
+           quency in the x-direction. Since the spatial variations of a(x, y), b(x, y), and q~(x, y)
+           are slow compared to the spatial-carrier frequency fo, the Fourier spectra in eqn.
+           (6) are separated by the carrier frequency f0, as is shown schematically in Fig. 3.
+           By using a filter function H(f~ -fo, Y), we take only one spectrum on the carrier
+           C(fx-fo, Y), and translate it by fo toward the origin to remove the carrier and
+           obtain C(fx, y), as is shown in Fig. 3. Note that unwanted background variation
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 5 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                        M. Takeda / Spatial-carrier fringe-pattern analysis 83
+                                                                          
+                               FOURIER SPECTRUM                           
+                                                                          
+                             a(fx, y) -- A(fx,y) + C (f×-f0,Y)            
+                                       /t                                 
+                            + C* (f~+fo ,y)   /                           
+                               \                                          
+                                        f0 i /                            
+                                %                                         
+                                A                                         
+                                          \x  fx                          
+                                            H (fx-f0,y)                   
+                                                                          
+                               C (fx ,Y)                                  
+                                          f×                              
+                                                                          
+                                                                          
+                                                                          
+                           c(x,y) : (l/2)b(x,y)expi¢(x,y)                 
+                                                                          
+                         cl0gc(x,y) = 10g(l/2)b(x,y) +i¢ (x,y)            
+                        Fig. 3. Spatial frequency spectrum of interferogram.
+                                                                          
+                                                                          
+           a(x, y) has been filtered out in this stage. Next we compute the inverse Fourier
+           transform of C(fx, y) with respect tofx and obtain c(x, y), defined by eqn. (5). Then
+           we calculate the complex logarithm of eqn. (5):                
+                                                                          
+                logc(x, y) = log½b(x, y) + i~b(x, y).         (7)         
+           We now have the phase 4~(x, y) in the imaginary part completely separated from
+           the amplitude variation b(x, y) in the real part. The phase can also be obtained
+           from the equivalent operation                                  
+                                                                          
+                ~b(x, y)= tan-l{Rec(x, y)/Imc(x, y)}.         (8)         
+           The phase so obtained is wrapped into the range from -rc to rc and has to be
+           corrected by using a phase-unwrapping algorithm.               
+            Figure 4(a) shows an example of the profile of an interferogram with carrier
+           frequency, and Fig. 4(b) is its Fourier spectrum 5. In Fig. 5, (a) is the interfero-
+           gram without tilt, (b) the wrapped phase obtained in the region indicated by a
+           horizontal bar in (a), and (c) is the unwrapped phase distribution 5.
+            Kreis 6 proposed a modified technique in which he took the Fourier transform
+           of an interferogram without spatial carrier, and obtained a complex analytic signal
+           similar to eqn. (5) by removing the negative frequency component from the spec-
+           trum. Since the sign of the phase becomes indeterminate when the interferogram
+           contains closed contour fringes, he used one more interferogram recorded by shift-
+           ing the phase of the reference wave. Bone et al. 7 have extended the Fourier
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 6 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           84           M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+                 (a)g(,,,y)                                               
+                    oo                                                    
+                    g                                                     
+                                                                          
+                                                                          
+                    g                                                     
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                         X                
+                    o.oa 44.¢M 131. J~ le|.sa ~.64 sJ|. Jo 31~.H 4¢M.43 $3J.~.1 SH.Q¢ I$6.U 111.24 ln.e~ I~L.5¢1 13~.24 m.U
+                     Y                                                    
+                 (b) (; f,y)                                              
+                    s2,                                                   
+                    g~                                                    
+                    g                                                     
+                    g                                                     
+                                           fo-- 3 Unes/mm                 
+                                                                          
+                    g                                                     
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                     y• * |35.5 IIl,ll 15i.i4 J,O }9~.t$ ~6i,I 51,~8 5tm,14 $4~,60 T15.~ ~i.g ~6.54 I~$.~1 M.=
+              Fig. 4. (a) Intensity profile of interferogram. (b) Fourier spectrum of interferogram 5.
+                                                                          
+                                                                          
+           transform method and used a full two-dimensional spatial filtering. Although the
+           two-dimensional spatial filtering requires more computation time, it has advan-
+           tages both in signal separation and noise reduction. They have shown that, by
+           appropriately choosing the orientation of the filtering function in the two-dimen-
+           sional Fourier space, it is possible to isolate the information components which
+           are not separable by the one-dimensional Fourier transform method. Figure 6
+           shows that if there is some angle 0 relative to the x-axis which is not taken at any
+           point by the tangent to a fringe, a line perpendicular to this and passing through
+           the origin in the Fourier space will separate the information components 7.
+            As shown in Fig. 7, the processing in the 2-D Fourier transform method is quite
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 7 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                       M. Takeda / Spatial-carrier fringe-pattern analysis 85
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                ,,/         \     ~ii                     
+                                                                          
+                                                                          
+                                                                          
+                                               \\ ~ii ~                   
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                       ~L~ ~                                              
+           Fig. 5. (a) Interferogram without tilt. (b) Wrapped phase distribution. (c) Unwrapped phase distri-
+                                  bution [5].                             
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 8 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           86           M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+                                                /                         
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+               Fig. 6. (a) Interferogram; and (b) the contour map of its 2-D Fourier spectrum I7.
+                                                                          
+           analogous to the reconstruction of an off-axis image hologram by using a double
+           diffraction system. Therefore, the Fourier transform method may be interpreted as
+           a numerical reconstruction of an image hologram. In this interpretation, the Fou-
+           rier transform method may be said to have been known before we proposed it in
+           the current form 5 as a technique for precision interferometry and profilometry.
+           Apparently, Roddier and Roddier 8 have used a similar technique to reconstruct
+           an incoherent hologram of a telescope pupil function, although the details of the
+           algorithm are not described in their early papers 8, 9.        
+                                                                          
+                                                    SPECTRUM RECONSTRUCTED
+              TILTED                    TILTED IHAGE HOLOGRAM ',/AVEFRONT 
+                   INTEDFEROGRAN SPECTRUM flEASURED                       
+             REFERENCE /                REFERENCE\~ /"/ //' \             
+                                                  ' .......               
+                                                                          
+                                       TO BE t~ LENS ~j i .Lz/ LE         
+                                       NEASUREO   "                       
+               Fig. 7. Fourier transform method (left) and reconstruction of image hologram (right).
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 9 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                        M. Takeda / Spatial-carrier fringe-pattern analysis 87
+                                                                          
+           2.2. Space-domain processing (sinusoid convolution)            
+                                                                          
+            A form of processing which is equivalent to the Fourier transform method can
+           be performed in the space signal domain. From eqn. (6), the spectrum passed by
+           the filter function H(fx -fo, Y) is written as                 
+                                                                          
+                C(f~-fo, Y)= H(fx-fo, y)G(f~, y).             (9)         
+           By taking the inverse Fourier transform of eqn. (9), the equivalent processing in
+           space domain is represented by                                 
+                                                                          
+                c(x, y) exp (2nifox) = h(x, y) exp (2nifox)*g(x, y). (10) 
+           where • denotes the convolution operation, and h(x, y) is an impulse response
+           function defined by the inverse Fourier transform of H(fx, y) with respect to fx.
+           The sinusoid convolution of eqn. (10) was proposed by Mertz 10, and its relation
+           to the frequency domain analysis was clarified by Womack 11. When we compute
+           the phase from eqn. (10) by using (7) or (8), we need to subtract the linear phase
+           introduced by the spatial-carrier frequency. As in the Fourier transform method,
+           the carrier frequency can be removed by translating the spectrum, eqn. (9), in the
+           frequency domain, so that                                      
+                                                                          
+                C(f~, y) = H(f~, y)G(f~ +fo, Y).              (11)        
+           The corresponding space-domain processing can be expressed by  
+                                                                          
+                c(x, y)= h(x, y).g(x, y) exp (-2rdfoX).       (12)        
+                                                                          
+           The space-domain processing based on eqn. (12) has been proposed and fully
+           demonstrated by using dedicated hardware, already in 1972, by Ichioka and Inuiya
+           12. Figure 8 shows a block diagram of their real-time phase detecting system. In
+           Fig. 9, (a) shows a phase distribution to be measured, (b) is an interferogram of the
+           phase distribution, and (c) is the detected phase distribution. Although their re-
+           search does not seem to have received due attention until rediscovered by Mertz
+           10, it may be considered as one of the pioneering works in the field.
+                                                                          
+               t HOLOGRAM                                                 
+              MACH-ZEHNDE'R                                               
+                                                                          
+                                                                          
+                      sinwt                    C                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                Fig. 8. lock diagram for space-domain real-time phase detecting system 12.
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 10 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           88          M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+           Fig. 9. (a) Phase distribution to be measured; (b) interferogram; and (c) detected phase distribution
+                                    [12].                                 
+                                                                          
+                                                                          
+            A filter function that can be implemented most conveniently in space domain is
+                                                                          
+                      sin(TzAxf:,)                                        
+               n(f~, y)=     ,                               (13)         
+                        7zAxfx                                            
+          which has a boxcar impulse response                             
+               h(x, y) = rect(x/Ax),                         (14)         
+                                                                          
+          where rect(x) = 1 for -Xz..-~< x ~< ½, and rect(x) = 0 otherwise. If we choose the spread
+          of the boxcar impulse response equal to one period of the carrier frequency, Ax =
+           lifo, then we have                                             
+                     x+ 1/2fo                                             
+               c(x, y)= I g(£c, y) exp (--2rcifo2) d2,       (15)         
+                     x- 1/2fo                                             
+          which gives the first Fourier coefficient of the interferogram expanded in a Fourier
+          series over an interval of one period centered by the probing point x. Figure 10
+          shows the interpretation of the processing in the frequency domain. The cut-off
+          frequency Af of the filter is now equal to the spatial-carrier frequency fo, so that
+          the filter gain becomes zero just at the frequencies where the other unwanted
+          spectra C*(fx +f0, Y) and A(fx, y) take their maximum values. If the spatial varia-
+          tion of the interferogram is a pure sinusoid as is the time variation of the interfero-
+          gram in the temporal-carrier technique, then eqn. (15) gives no errors. This is the
+          reason why eqn. (15) (or its discrete version) has been used extensively in the
+          temporal-carrier techniques. In the spatial-carrier technique, however, a certain
+          amount of error is unavoidable since the spectra have finite spreads around the
+          zero-gain frequencies of the filter.                            
+            For faster computation of eqn. (15), several models for the approximation of the
+          fringe pattern have been proposed. Macy [13] used the sinusoid fitting algorithm
+          in which the interferogram is approximated by a pure sinusoid within an interval
+          x - 1/2fo ~< 2 ~< x + 1/2fo, such that                          
+               g(2, y) = e(x, y) + fl(x, y) cos (2rcfo2) + 7(x, y) sin (2rCfo2). (16)
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 11 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                        M. Takeda / Spatial-carrier fringe-pattern analysis 89
+                                                                          
+                             i.. .........................................................................................................
+                              Ax= l/f0 ~ /~f=f0.                          
+                                                                          
+                                         C (f×-fo,Y)                      
+                                  A(f×,y)   /                             
+                                                                          
+                         C* (f×+fo,Y) " ' ,, ~ ~ f° . ~ . .... ' x/       
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                r x+l/2f                                  
+                          c (x,y) = g (x',y) exp (-2 n i f0x') dx'        
+                                ~,J x-- l/2f0                             
+                    Fig. 10. Frequency domain interpretation of sinusoid convolution.
+                                                                          
+                                                                          
+           Using this approximation, eqn. (15) becomes                    
+                c(x, y)= ½fl(x, y)- iT(x, Y)/fo,             (17)         
+                                                                          
+           where/~(x, y) and 7(x, y) are determined from data at three equally spaced points
+           in that interval. An improved algorithm for the sinusoid fitting was later proposed
+           by Ransom and Kokal 14, and Toyooka and Tominaga 15 approximated the
+           interferogram by the form                                      
+                g(2, y) = a(x, y) + b(x, y) cos {e(x, y) + 2Z~fo + fl(x, y)2}. (18)
+                                                                          
+           2.3. Computational complexities                                
+                                                                          
+            Suppose the one-dimensional interferogram is sampled at N points and pro-
+           cessed by a digital computer. The number of operations (multiplications and addi-
+           tions) that must be performed in the Fourier transform method is of the order of
+           N log N, provided that an FFT algorithm is used. In the sinusoid convolution in
+           space domain, the corresponding number of operation is of the order of raN, where
+           m is the number of sample points included in the convolution kernel or the spread
+           of the impulse response h(x, y); m takes its minimum value 3, when we choose the
+           spread of a boxcar impulse response equal to one period of the carrier frequency,
+           Ax = lifo. It is clear that the method of sinusoid convolution in space domain
+           has a significant computational advantage over the Fourier transform method.
+           However, it should be noted that this computational efficiency is gained at the
+           cost of accuracy since the filter function as shown in Fig. 10 is not an ideal one.
+           To realize an ideal narrow-band bandpass filter, such as shown in Fig. 3, in space
+           domain, we need to convolve an impulse response function that has a large spread,
+           which requires m to be as large as log N. Therefore, we may conclude that the
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 12 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           90           M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+           space domain processing is suitable for real-time applications where speed is more
+           important than accuracy, and that the Fourier transform method is suitable for
+           applications where accuracy is required.                       
+                                                                          
+                                                                          
+           3. Some error sources                                          
+                                                                          
+            Error sources in heterodyne interferometry have been studied extensively
+           16, 17. Here we focus on some of the errors that are particular to the spatial-
+           carrier technique.                                             
+                                                                          
+           3.1. Fringe discontinuities                                    
+                                                                          
+            Implicit in an FFT algorithm used in the Fourier transform method is that a
+           fringe is extended as a periodic function in the region outside the data area, as
+           shown in Fig. 11 (top). Generally, this causes fringe discontinuities at the bound-
+           aries. In some applications, such as in the test of a circular mirror with a hole as
+           shown in Fig. 11 (middle), the fringe pattern abrupty disappears at the boundaries.
+           These discontinuities cause the fringe spectra to spread out as shown in Fig. 11
+           (bottom). This gives rise to errors not only in the filtering operation in the Fourier
+           transform method, but also in the sinusoid convolution near the boundaries in the
+           space-domain processing. These errors were studied by Green et al. 18 by numeri-
+           cal experiments. Kujawinska and Spik 19-1 proposed the use of a dummy fringe
+           of a similar frequency that smoothly extrapolates the data from the two boundaries.
+           Kujawinska et al. 20 have recently extended the technique to the two-dimen-
+                                                                          
+                                                                          
+                              liii  AA     t                              
+                                            /!i                           
+                                                                          
+                             ~ v' v v v v v v vi~> v ~                    
+                                              x                           
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                             fx                           
+                     Fig. 11. Fringe discontinuity which causes spread of spectrum.
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 13 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                       M. Takeda / Spatial-carrierf ringe-pattern analysis 91
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+           Fig. 12. (a) Original interferogram. (b) Extrapolated interferogram. (c) Extrapolated interferogram
+                  identical to (b) but for a shift of one-halfp eriod in both directions [21].
+                                                                          
+                                                                          
+           sional case, and demonstrated its performance by developing a fringe analysis
+           system. An elegant systematic method of fringe extrapolation was developed by
+           Roddier and Roddier [21], which is based on extrapolating fringes by Gerchberg's
+           iterative algorithm for analytic continuation. Figure 12 shows an example of their
+           experiments. An original interferogram (a) is extrapolated as in (b). One marked
+           advantage of this technique is that it not only extrapolates the fringes but also
+           nicely interpolates them from one period to another, thus avoiding any discontinu-
+           ity in the periodic tilting. This can be seen in Fig. 12 (c), which shows an extrapo-
+           lated interferogram identical to Fig. 12(b) but for a shift of one-half period in both
+           directions.                                                    
+                                                                          
+           3.2. Influence of noise                                        
+                                                                          
+            For a small additive white noise, rms phase errors in heterodyne techniques can
+           be related to signal-to-noise ratios (SNR) by relatively simple formulas. In the case
+           of the temporal-carrier technique, Bruning [22] has shown that the rms phase
+           error for the fringe scanning method is given by               
+                x//~[Aq~(x, y)]2) = (1/N)I/2/S(x, y).         (19)        
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 14 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           92           M. Takeda / Spatial-carrierf ringe-pattern analysis
+                                                                          
+           In eqn. (19), N is the number of sample points, and S(x, y) is a SNR defined by
+                                                                          
+                S(x, y)= b(x, y)/(x/~e),                     (20)         
+           where b(x, y) is the fringe amplitude in eqn. (1), and o- is the rms value of the noise.
+           For the spatial-carrier technique, Takeda 23 gave a corresponding rms phase
+           error for the Fourier transform method as                      
+                                                                          
+                x/(A~b(x, y)2) = (n/U)l/Z/S(x, y),           (21)         
+           where n is the number of spectral sample points within the filter passband in the
+           frequency domain. A similar formula was given for the two-dimensional case by
+           Bone et al. 7. These results can be interpreted as follows. Since in the temporal-
+           carrier technique the phase is obtained from the single-frequency component of a
+           pure sinusoid plus white noise, only 1/N of the total noise power is included in
+           the filtered spectrum, so that we have the factor (l/N) i/2 in the phase error in
+           eqn. (19). In the Fourier transform method, on the other hand, the phase is obtained
+           from the multiple, n, frequency spectra spreading over the filter passband. The
+           spectra passed by the filter, therefore, include n/N of the total noise power, and
+           under the small-noise assumption the phase error is proportional to the factor
+           (n/N). A more detailed comparison of the noise characteristics between the tempo-
+           ral-carrier technique and the spatial-carrier technique was given by Takeda 24.
+                                                                          
+           3.3. Detector nonlinearity                                     
+                                                                          
+            Generally, the Fourier transform method is relatively robust to detector non-
+           linearity as far as the higher harmonics generated by the nonlinearity are weak
+           and/or can be separated from the signal on the fundamental carrier frequency.
+           However, large nonlinearity causes a significant error. This issue was addressed
+          and its correction algorithm proposed by Nugent 25.             
+                                                                          
+                                                                          
+                                                                          
+          4. Application areas                                            
+                                                                          
+            In this section we review some of the application areas of the spatial-carrier
+          technique.                                                      
+                                                                          
+          4.1. Optical testing                                            
+                                                                          
+            An obvious application area is optical testing. Doerband and Tiziani -26 ap-
+          plied the Fourier transform method to the test of aspheric surfaces using computer-
+          generated holograms. Figure 13 shows an example of their experiment. The Fourier
+          transform method is also used in the evaluation of large optics surfaces by the
+          system called ECAPS, a product of Lockheed Company. To my knowledge, this
+          is the first commercially available system that uses the Fourier transform method.
+          Takeda and Kobayashi 27 applied the Fourier transform method to lateral
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 15 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                        M. Takeda / Spatial-carrierf ringe-pattern analysis 93
+                                                                          
+              INTERFEROGRAM               FOURIER-SPECTRUM                
+                                                                          
+                                                                          
+                                             --fo T'~o                    
+                                                                          
+                                                A(f,y'                    
+                                  .5                                      
+                                                                          
+                                   ~J                                     
+                                                                          
+                                               1'1112                     
+                                                                          
+                                                                          
+                                   C -1.0 1 '                             
+                                               0           100            
+                                                 frequency                
+           Fig. 13. Testing aspheric surface using the Fourier transform method. Interferogram (left) and its
+                             Fourier spectrum (right) [26].               
+                                                                          
+                                                                          
+                                                                          
+                                  0.05                                    
+                                                                          
+                                                                          
+                                            J                             
+                                                                          
+                            I                                             
+                                             4    X (mm)                  
+                                                                          
+                                            measured                      
+                                                  .....                   
+                                            computed                      
+                     ......... /                                          
+                             Fig. 14. Lateral aberration [27].            
+           aberration measurements using a grating interferometer. An example of the mea-
+           sured lateral aberration is shown in Fig. 14 with the result of ray tracing.
+                                                                          
+           4.2. Holographic interferometry                                
+                                                                          
+            The measurement of deformations and displacements is one of the common
+           applications of holographic interferometry. Dzubur and Vukicevic [28] used the
+           Fourier transform method in the analysis of a spatial-carrier fringe pattern ob-
+           tained with a sandwich hologram, and measured deformations. A similar experi-
+           ment was also performed by Takeda and Tung [29] using a double-exposure
+           hologram.                                                      
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 16 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           94           M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+            The idea of holographic interferometry can be extended to the use of electron
+           waves. The phase difference between two electron beams is proportional to the
+           magnetic flux enclosed by the two beams and is given by the formula of the
+           Aharonov-Bohm effect,                                          
+                                                                          
+                A49 = - (2~e/h) l Bn dS,                     (22)         
+           where e is the electron charge, h is Planck's constant, and B is the magnetic flux
+           density. Tonomura et al. 30 have developed an electron holography microscope
+           and experimentally verified this Aharonov-Bohm effect. According to eqn. (21),
+           one fringe in an electron wave interferogram corresponds to an enclosed magnetic
+           flux of h/e =4.1 x 10 -aS Wb, which represents a very high sensitivity compared
+           with that of any other conventional field-measurement technique. With the collab-
+           oration of Tonomura and Endo, Takeda and Ru 31 applied the Fourier trans-
+           form method to the analysis of electron-wave interferograms, and demonstrated
+           the measurement of extremely small magnetic fields leaked out of a magnetic film
+           on which a high-density magnetic bit pattern was recorded with a bit length of
+           0.15 p.m. Figure 15 shows an example of the measured electron phase distribution.
+           The contour lines of the phase represent the force lines of the stray magnetic field
+           leaked from the segment of the cobalt film corresponding to a 1-bit recording.
+           Since there is no ambiguity as to hills and valleys of the measured electron wave
+           front, directions of the magnetizations and force lines can be uniquely determined.
+                                                                          
+           4.3. Plasma diagnostics and 3-D fluid flow measurements        
+                                                                          
+            The spatial-carrier technique has a great advantage in applications where the
+           fast and one-shot recording of an interferogram is essential. Kalal et al. 32, 33
+           have applied the spatial-carrier technique to plasma diagnostics. Figure 16 shows
+                                                                          
+                                           It                             
+                                                                          
+                                                                          
+                                                                          
+                                /                                         
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                             ,~x.y)                       
+                                                                          
+                                                                          
+                      Fig. 15. Electron phase distribution and force lines 31.
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 17 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                        M. Takeda / Spatial-carrier fringe-pattern analysis 95
+                              BIPRISM                                     
+                        (~   ~"~  MICROSCOOPBEJ ECTIVE                    
+                                                                          
+                                                                          
+                       F~   I   L   ~        ~-PROBBEE AM                 
+                                                                          
+                                                                          
+                                                                          
+                           ANALYSER        POLARISER                      
+                        Fig. 16. Interferometerf or plasma diagnostics [33].
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+              Fig. 17. Phase-amplitude modulated interferogram with spatial-carrier frequency [33].
+                                                                          
+                                                                          
+           their interferometer which encodes both the strength of magnetic field and the
+           plasma density, respectively, in the amplitude and the phase of the interferogram.
+           Figure 17 is an example of the interferogram, which was analyzed by the Fourier
+           transform method. In Fig. 18, (a) is the phase distribution corresponding to the
+           plasma density, and (b) is the amplitude distribution representing Faraday rotation
+           caused by the magnetic field. They also proposed a method for correcting fringe
+           blurring caused by time-varying plasma. Snyder and Hesselink [34] measured
+           3-D fluid flow with optical tomography, where the Fourier transform method was
+           used in the analysis of interferometric fringe patterns.       
+                                                                          
+           4.4. Profilometry                                              
+                                                                          
+            The method of moir6 contouring is a well-known technique for 3-D shape
+           measurement, but it has the same kind of problems as those encountered in conven-
+           tional interferometry using closed contour fringes, i.e., limited sensitivity and ambi-
+           guity about the sign of the phase. The use of a spatial carrier is one solution to
+           the problems. Takeda and Mutoh [35] applied the Fourier transform method to
+           profilometry. Figure 19 is an example of the spatial carrier pattern obtained by
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 18 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           96           M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+           Fig. 18. (a) Phase distribution corresponding to plasma density, (b) Amplitude distribution represent-
+                      ing Faraday rotation caused by the magnetic field [33].
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                Fig. 19. Spatial-carrier pattern generated by projecting a grating patterm [35].
+                                                                          
+                                                                          
+           projecting a grating pattern onto the object to be measured. The height of the
+           object is encoded in the phase of the pattern, and it can be retrieved by the Fourier
+           transform method. Figure 20 shows the Fourier spectrum and Fig. 21 the wrapped
+           phase distribution, which is corrected as shown in Fig. 22 by using a phase-unwrap-
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 19 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                        M. Takeda / Spatial-carrier fringe-pattern analysis 97
+                                                                          
+                                Oo                                        
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                           ~21 o                                          
+                    Fig. 20. Fourier spectrum of the deformed grating pattern 35.
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                        Nxy                               
+                          Fig. 21. Wrapped phase distribution 35.         
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                         Fig. 22. Unwrapped phase distribution 35.        
+                                                                          
+           ping algorithm. Toyooka and Iwaasa 36 performed a similar experiment by
+           space-domain processing.                                       
+                                                                          
+                                                                          
+           5. Conclusion                                                  
+                                                                          
+            We have described the principle of the spatial-carrier technique and reviewed
+           recent developments and applications. As we have seen, the features of the spatial-
+           carrier technique and the temporal-carrier technique supplement each other. With
+           the development of high-resolution image sensors and dedicated IC circuitries, the
+                                                                          
+                                                                          
+                                                                          
+
+===== PAGE 20 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+           98           M. Takeda / Spatial-carrier fringe-pattern analysis
+                                                                          
+           application areas of the spatial-carrier technique will grow as large as those of the
+           temporal-carrier techniques.                                   
+                                                                          
+                                                                          
+           Acknowledgements                                               
+                                                                          
+            I would like to thank D.J. Bone, H.-A. Bacher, R.J. Sandeman, F. Roddier,
+           C. Roddier, Y. Ichioka, M. Inuiya, B. Doerband, H.J. Tiziani, M. Kalal,
+           K.A. Nugent, and B. Luther-Davies, who gave me the permission for reproducing
+           the pictures in their original papers. I am also grateful to L. Mertz for his stimu-
+           lation.                                                        
+                                                                          
+                                                                          
+           References                                                     
+                                                                          
+                                                                          
+           1  K. Creath, Phase-measurement interferometry techniques, Prog. Opt. 26 (1988) 351-393.
+           2  J. Schwider et al., Real-time methods in optical testing interferometry, ZOS Report 88-6, 1988,
+             pp. 1-91.                                                    
+           3  N.A. Massie, R.D. Nelson and S. Holly, High-performance real-time heterodyne interferometry,
+             Appl. Opt. 18 (1979) 1797-1803.                              
+           4 J.H. Bruning, D.R. Herriott, J.E. Gallagher, D.P. Rosenfeld, A.D. White and D.J. Brangaccio,
+              Digital wavefront measuring interferometer for testing optical surfaces and lenses, Appl. Opt.
+              13 (1974) 2693-2703.                                        
+           5  M. Takeda, H. Ina and K. Kobayashi, Fourier-transform method of fringe pattern analysis for
+              computer-based topography and interferometry, J. Opt. Soc. Am. 72 (1982) 156-160.
+           6  T. Kreis, Digital holographic interference-phase measurement using the Fourier-transform
+             method, J. Opt. Soc. Am. A3 (1986) 847-855.                  
+           7  D.J. Bone, H.-A. Bachor and R.J. Sandeman, Fringe-pattern analysis using a 2-D Fourier
+             transform, Appl. Opt. 25 (1986) 1653-1660.                   
+           8  F. Roddier and C. Roddier, Imaging with a multi-mirror telescope, Proc. ESO Conf. Optical
+              Telescopes of the Future, Geneva, Italy, 1977, pp. 359-370. 
+           9  C. Roddier and F. Roddier, Imaging with a coherence interferometer in optical astronomy,
+              Proc. IAU Colloquium 49, Groningen, The Netherlands, 1978, pp. 175-185.
+           10 L. Mertz, Real-time fringe-pattern analysis, Appl. Opt. 22 (1983) 1535-1539.
+           1-1 K.H. Womack, Interferometric phase measurement using spatial synchronous detection, Opt.
+              Eng. 23 (1984) 391-395.                                     
+           12 Y. Ichioka and M. Inuiya, Direct phase detecting system, Appl. Opt. 11 (1972) 1507-1514.
+           13 W.W. Macy, Jr., Two-dimensional fringe-pattern analysis, Appl. Opt. 22 (1983) 3898-3901.
+           14 P.L. Ransom and J.V. Kokal, Interferogram analysis by a modified sinusoid fitting technique,
+              Appl. Opt. 25 (1986) 4199-4204.                             
+           15 S. Toyooka and M. Tominaga, Spatial fringe scanning for optical phase measurement, Opt.
+              Commun. 51 (1984) 68-70.                                    
+           16 J. Schwider, R. Burow, K.-E. Elssner, J. Grzanna, R. Spolaczyk and K. Merket, Digital wave-
+              front measuring interferometry: some systematic error sources, Appl. Opt. 22 (1983) 3421-3431.
+           17 N. Ohyama, S. Kinoshita, A. Cornejo-Rodriguez, T. Honda and J. Tsujiuchi, Accuracy of phase
+              determination with unequal reference phase shift, J. Opt. Soc. Am. A5 (1988) 2019-2025.
+           18 R.J. Green, J.G. Walker and D.W. Robinson, Investigation of the Fourier transform method of
+              fringe pattern analysis, Opt. Lasers Eng. 8 (1988) 29-44.   
+           19 M. Kujawinska and A. Spik, A microprocessor-based camera analysis for fringe pattern, Proc.
+              6th Congress Material Testing, Budapest, Hungary, 1986.     
+
+===== PAGE 21 / 21 =====
+                                                                          
+                                                                          
+                                                                          
+                        M. Takeda / Spatial-carrier fringe-pattern analysis 99
+                                                                          
+           20 M. Kujawinska, A. Spik and J. Wojciak, Fringe pattern analysis using Fourier transform
+             techniques, Technical Digest, lnterferometry '89, Warsaw, Poland, 1989, p. 172.
+           21 C. Roddier and F. Roddier, Interferogram analysis using Fourier transform techniques, Appl.
+              Opt. 26 (1987) 1668-1673.                                   
+           -22 J.H. Bruning, in: D. Malacara, ed., Optical Shop Testing, Wiley, New York, 1987, p. 414.
+           23 M. Takeda, Subfringe interferometry fundamentals, Jpn. J. Opt. 13 (1984) 55-65.
+           24 M. Takeda, Temporal versus spatial carrier techniques for heterodyne interferometry, Proc.
+             ICO 14, Quebec, Proc. SPIE 814 (1987) 329-330.               
+           25 K.A. Nugent, Interferogram analysis using an accurate fully automatic algorithm, Appl. Opt.
+              24 (1985) 3101-3105.                                        
+           26 B. Doerband and H.J. Tiziani, Testing aspheric surfaces with computer-generated holograms:
+              analysis of adjustment and shape errors, Appl. Opt. 24 (1985) 2604-2611.
+           27 M. Takeda and S. Kobayashi, Lateral aberration measurements with a digital Talbot interfer-
+              ometer, Appl. Opt. 23 (1984) 1760-1764.                     
+           28 A. Dzubur and D. Vukicevic, Ultrahigh resolution sandwich holography, Appl. Opt. 23 (1984)
+              1474-1480.                                                  
+           29 M. Takeda and Z. Tung, Subfringe holographic interferometry by computer-based spatial-
+             carrier fringe-pattern analysis, J. Opt. (Paris) 16 (1985) 127-131.
+           30 A. Tonomura, Electron holography, Prog. Opt. 23 (1986) 185-220.
+           31 M. Takeda and Q.-S. Ru, Computer-based highly sensitive electron-wave interferometry, Appl.
+              Opt. 18 (1985) 3068-3070.                                   
+           321 M. Kalal, K.A. Nugent and B. Luther-Davies, Phase-amplitude imaging: its application to fully
+              automated analysis of magnetic field measurements in laser-induced plasmas, Appl. Opt. 26
+              (1987) 1674-1679.                                           
+           33 M. Kalal, B. Luther-Davies and K.A. Nugent, Phase-amplitude imaging: the fully automated
+              analysis of megagauss magnetic field measurements in laser-produced plasmas, J. Appl. Phys.
+              64 (1988) 3845-3850.                                        
+           34 R. Snyder and L. Hesselink, Measurement of mixing fluid flows with optical tomography, Opt.
+              Lett. 13 (1988) 87-90.                                      
+           35 M. Takeda and K. Mutoh, Fourier transform profilometry for the automatic measurement of
+              3-D object shapes, Appl. Opt. 22 (1983) 3977-3982.          
+           36 S. Toyooka and Y. Iwaasa, Automatic profilometry of 3-D diffuse objects by spatial phase
+              detection, Appl. Opt. 25 (1986) 1630-1633.                  
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+                                                                          

@@ -27,6 +27,17 @@
 #define HALF_PI_VALUE (PI_VALUE / 2.0)
 #define PHASE_TREND_EPSILON 1e-12
 #define PHASE_BOUNDARY_EPSILON 1e-9
+#define PHASE_REFERENCE_GUARD_RAD 0.08
+#define PHASE_JUMP_MIN_DEG 135.0
+#define AMPLITUDE_RELIABLE_FRACTION 0.05
+#define AMPLITUDE_PEAK_DECAY 0.9995
+#define PENDING_SAMPLE_LIMIT 20U
+
+enum PhaseBoundary {
+    PHASE_BOUNDARY_NONE = 0,
+    PHASE_BOUNDARY_ZERO,
+    PHASE_BOUNDARY_HALF_PI
+};
 
 double ametek_calculate_folded_phase(
     double r1,
@@ -84,48 +95,297 @@ void ametek_phase_unwrapper_reset(AmetekPhaseUnwrapper *unwrapper)
     }
 }
 
-double ametek_unwrap_phase(
-    AmetekPhaseUnwrapper *unwrapper,
-    double folded_phase_rad)
+static void update_amplitude_peak(double amplitude, double *peak)
 {
+    if (!isfinite(amplitude) || amplitude < 0.0 || peak == NULL) {
+        return;
+    }
+    *peak *= AMPLITUDE_PEAK_DECAY;
+    if (amplitude > *peak) {
+        *peak = amplitude;
+    }
+}
+
+static int amplitude_is_reliable(double amplitude, double peak)
+{
+    return isfinite(amplitude) && amplitude > 0.0 && peak > 0.0 &&
+        amplitude >= peak * AMPLITUDE_RELIABLE_FRACTION;
+}
+
+static int theta1_is_reliable(
+    const AmetekPhaseUnwrapper *unwrapper,
+    const AmetekSample *sample)
+{
+    return isfinite(sample->theta1) &&
+        sample->folded_phase_rad <= HALF_PI_VALUE - PHASE_REFERENCE_GUARD_RAD &&
+        amplitude_is_reliable(sample->r1, unwrapper->peak_r1);
+}
+
+static int theta2_is_reliable(
+    const AmetekPhaseUnwrapper *unwrapper,
+    const AmetekSample *sample)
+{
+    return isfinite(sample->theta2) &&
+        sample->folded_phase_rad >= PHASE_REFERENCE_GUARD_RAD &&
+        amplitude_is_reliable(sample->r2, unwrapper->peak_r2);
+}
+
+static void update_theta_references(
+    AmetekPhaseUnwrapper *unwrapper,
+    const AmetekSample *sample)
+{
+    if (theta1_is_reliable(unwrapper, sample)) {
+        unwrapper->theta1_reference_deg = sample->theta1;
+        unwrapper->theta1_reference_valid = 1;
+    }
+    if (theta2_is_reliable(unwrapper, sample)) {
+        unwrapper->theta2_reference_deg = sample->theta2;
+        unwrapper->theta2_reference_valid = 1;
+    }
+}
+
+static double circular_phase_difference_deg(double first, double second)
+{
+    double difference = fmod(fabs(first - second), 360.0);
+
+    if (difference > 180.0) {
+        difference = 360.0 - difference;
+    }
+    return difference;
+}
+
+static int boundary_theta_is_reliable(
+    const AmetekPhaseUnwrapper *unwrapper,
+    const AmetekSample *sample,
+    enum PhaseBoundary boundary)
+{
+    if (boundary == PHASE_BOUNDARY_ZERO) {
+        return theta2_is_reliable(unwrapper, sample);
+    }
+    return theta1_is_reliable(unwrapper, sample);
+}
+
+static int boundary_reference_is_valid(
+    const AmetekPhaseUnwrapper *unwrapper,
+    enum PhaseBoundary boundary)
+{
+    if (boundary == PHASE_BOUNDARY_ZERO) {
+        return unwrapper->theta2_reference_valid;
+    }
+    return unwrapper->theta1_reference_valid;
+}
+
+static double boundary_reference_theta(
+    const AmetekPhaseUnwrapper *unwrapper,
+    enum PhaseBoundary boundary)
+{
+    if (boundary == PHASE_BOUNDARY_ZERO) {
+        return unwrapper->theta2_reference_deg;
+    }
+    return unwrapper->theta1_reference_deg;
+}
+
+static double boundary_current_theta(
+    const AmetekSample *sample,
+    enum PhaseBoundary boundary)
+{
+    if (boundary == PHASE_BOUNDARY_ZERO) {
+        return sample->theta2;
+    }
+    return sample->theta1;
+}
+
+static double boundary_phase_rad(enum PhaseBoundary boundary)
+{
+    return boundary == PHASE_BOUNDARY_ZERO ? 0.0 : HALF_PI_VALUE;
+}
+
+static AmetekUnwrapDecision crossing_decision(enum PhaseBoundary boundary)
+{
+    return boundary == PHASE_BOUNDARY_ZERO
+        ? AMETEK_UNWRAP_CROSSED_ZERO
+        : AMETEK_UNWRAP_CROSSED_HALF_PI;
+}
+
+static AmetekUnwrapDecision reversal_decision(enum PhaseBoundary boundary)
+{
+    return boundary == PHASE_BOUNDARY_ZERO
+        ? AMETEK_UNWRAP_REVERSED_NEAR_ZERO
+        : AMETEK_UNWRAP_REVERSED_NEAR_HALF_PI;
+}
+
+static int theta_has_pi_jump(double reference_theta, double current_theta)
+{
+    return circular_phase_difference_deg(reference_theta, current_theta) >=
+        PHASE_JUMP_MIN_DEG;
+}
+
+static void update_motion_history(
+    AmetekPhaseUnwrapper *unwrapper,
+    double folded_phase_rad,
+    double delta)
+{
+    if (fabs(delta) > PHASE_TREND_EPSILON) {
+        unwrapper->folded_trend = delta > 0.0 ? 1 : -1;
+        unwrapper->previous_delta_rad = delta;
+    }
+    unwrapper->previous_folded_phase_rad = folded_phase_rad;
+}
+
+static void resolve_boundary_candidate(
+    AmetekPhaseUnwrapper *unwrapper,
+    AmetekSample *sample,
+    enum PhaseBoundary boundary,
+    int old_slope,
+    double turn_folded_phase_rad,
+    double turn_unwrapped_phase_rad,
+    double reference_theta_deg)
+{
+    double boundary_rad = boundary_phase_rad(boundary);
+
+    if (theta_has_pi_jump(
+            reference_theta_deg,
+            boundary_current_theta(sample, boundary))) {
+        double phase_at_boundary = turn_unwrapped_phase_rad +
+            (double)old_slope * (boundary_rad - turn_folded_phase_rad);
+
+        unwrapper->branch_slope = -old_slope;
+        unwrapper->unwrapped_phase_rad = phase_at_boundary +
+            (double)unwrapper->branch_slope *
+                (sample->folded_phase_rad - boundary_rad);
+        sample->unwrap_decision = crossing_decision(boundary);
+    } else {
+        unwrapper->branch_slope = old_slope;
+        unwrapper->unwrapped_phase_rad = turn_unwrapped_phase_rad +
+            (double)old_slope *
+                (sample->folded_phase_rad - turn_folded_phase_rad);
+        sample->unwrap_decision = reversal_decision(boundary);
+    }
+}
+
+static double process_pending_candidate(
+    AmetekPhaseUnwrapper *unwrapper,
+    AmetekSample *sample)
+{
+    enum PhaseBoundary boundary =
+        (enum PhaseBoundary)unwrapper->pending_boundary;
+    double delta = sample->folded_phase_rad -
+        unwrapper->previous_folded_phase_rad;
+
+    ++unwrapper->pending_samples;
+    if (boundary_theta_is_reliable(unwrapper, sample, boundary)) {
+        resolve_boundary_candidate(
+            unwrapper,
+            sample,
+            boundary,
+            unwrapper->pending_old_slope,
+            unwrapper->pending_turn_folded_phase_rad,
+            unwrapper->pending_turn_unwrapped_phase_rad,
+            unwrapper->pending_reference_theta_deg);
+        unwrapper->pending_boundary = PHASE_BOUNDARY_NONE;
+    } else if (unwrapper->pending_samples >= PENDING_SAMPLE_LIMIT) {
+        unwrapper->branch_slope = unwrapper->pending_old_slope;
+        unwrapper->unwrapped_phase_rad =
+            unwrapper->pending_turn_unwrapped_phase_rad +
+            (double)unwrapper->pending_old_slope *
+                (sample->folded_phase_rad -
+                    unwrapper->pending_turn_folded_phase_rad);
+        unwrapper->pending_boundary = PHASE_BOUNDARY_NONE;
+        sample->unwrap_decision = AMETEK_UNWRAP_UNCERTAIN;
+    } else {
+        /* The corresponding R is too small for theta to be meaningful. */
+        unwrapper->unwrapped_phase_rad =
+            unwrapper->pending_turn_unwrapped_phase_rad;
+        sample->unwrap_decision = AMETEK_UNWRAP_PENDING;
+    }
+
+    update_motion_history(unwrapper, sample->folded_phase_rad, delta);
+    update_theta_references(unwrapper, sample);
+    return unwrapper->unwrapped_phase_rad;
+}
+
+double ametek_unwrap_sample(
+    AmetekPhaseUnwrapper *unwrapper,
+    AmetekSample *sample)
+{
+    double folded_phase_rad;
     double delta;
     int trend;
 
-    if (unwrapper == NULL || !isfinite(folded_phase_rad) ||
+    if (unwrapper == NULL || sample == NULL) {
+        return NAN;
+    }
+    folded_phase_rad = sample->folded_phase_rad;
+    sample->unwrap_decision = AMETEK_UNWRAP_NONE;
+    if (!isfinite(folded_phase_rad) ||
         folded_phase_rad < 0.0 || folded_phase_rad > HALF_PI_VALUE) {
         return NAN;
     }
+
+    update_amplitude_peak(sample->r1, &unwrapper->peak_r1);
+    update_amplitude_peak(sample->r2, &unwrapper->peak_r2);
+
     if (!unwrapper->initialized) {
         unwrapper->initialized = 1;
         unwrapper->branch_slope = 1;
         unwrapper->previous_folded_phase_rad = folded_phase_rad;
         unwrapper->unwrapped_phase_rad = folded_phase_rad;
+        update_theta_references(unwrapper, sample);
         return unwrapper->unwrapped_phase_rad;
+    }
+
+    if (unwrapper->pending_boundary != PHASE_BOUNDARY_NONE) {
+        return process_pending_candidate(unwrapper, sample);
     }
 
     delta = folded_phase_rad - unwrapper->previous_folded_phase_rad;
     if (fabs(delta) <= PHASE_TREND_EPSILON) {
         unwrapper->previous_folded_phase_rad = folded_phase_rad;
+        update_theta_references(unwrapper, sample);
         return unwrapper->unwrapped_phase_rad;
     }
     trend = delta > 0.0 ? 1 : -1;
 
     if (unwrapper->folded_trend != 0 && trend != unwrapper->folded_trend) {
-        double boundary = unwrapper->previous_folded_phase_rad < HALF_PI_VALUE / 2.0
-            ? 0.0
-            : HALF_PI_VALUE;
+        enum PhaseBoundary boundary =
+            unwrapper->previous_folded_phase_rad < HALF_PI_VALUE / 2.0
+                ? PHASE_BOUNDARY_ZERO
+                : PHASE_BOUNDARY_HALF_PI;
+        double boundary_rad = boundary_phase_rad(boundary);
         double distance_to_boundary = fabs(
-            unwrapper->previous_folded_phase_rad - boundary);
+            unwrapper->previous_folded_phase_rad - boundary_rad);
         double local_motion = fabs(unwrapper->previous_delta_rad) + fabs(delta);
 
         if (distance_to_boundary <= local_motion + PHASE_BOUNDARY_EPSILON) {
-            int old_slope = unwrapper->branch_slope;
-            unwrapper->branch_slope = -old_slope;
-            unwrapper->unwrapped_phase_rad +=
-                (double)old_slope *
-                    (boundary - unwrapper->previous_folded_phase_rad) +
-                (double)unwrapper->branch_slope *
-                    (folded_phase_rad - boundary);
+            if (!boundary_reference_is_valid(unwrapper, boundary)) {
+                unwrapper->unwrapped_phase_rad +=
+                    (double)unwrapper->branch_slope * delta;
+                sample->unwrap_decision = AMETEK_UNWRAP_UNCERTAIN;
+            } else if (boundary_theta_is_reliable(unwrapper, sample, boundary)) {
+                resolve_boundary_candidate(
+                    unwrapper,
+                    sample,
+                    boundary,
+                    unwrapper->branch_slope,
+                    unwrapper->previous_folded_phase_rad,
+                    unwrapper->unwrapped_phase_rad,
+                    boundary_reference_theta(unwrapper, boundary));
+            } else {
+                unwrapper->pending_boundary = boundary;
+                unwrapper->pending_old_slope = unwrapper->branch_slope;
+                unwrapper->pending_samples = 1U;
+                unwrapper->pending_turn_folded_phase_rad =
+                    unwrapper->previous_folded_phase_rad;
+                unwrapper->pending_turn_unwrapped_phase_rad =
+                    unwrapper->unwrapped_phase_rad;
+                unwrapper->pending_reference_theta_deg =
+                    boundary_reference_theta(unwrapper, boundary);
+                sample->unwrap_decision = AMETEK_UNWRAP_PENDING;
+
+                /* Hold the last trustworthy phase until R recovers. */
+                unwrapper->unwrapped_phase_rad =
+                    unwrapper->pending_turn_unwrapped_phase_rad;
+            }
         } else {
             unwrapper->unwrapped_phase_rad +=
                 (double)unwrapper->branch_slope * delta;
@@ -135,10 +395,24 @@ double ametek_unwrap_phase(
             (double)unwrapper->branch_slope * delta;
     }
 
-    unwrapper->folded_trend = trend;
-    unwrapper->previous_delta_rad = delta;
-    unwrapper->previous_folded_phase_rad = folded_phase_rad;
+    update_motion_history(unwrapper, folded_phase_rad, delta);
+    update_theta_references(unwrapper, sample);
     return unwrapper->unwrapped_phase_rad;
+}
+
+const char *ametek_unwrap_decision_name(AmetekUnwrapDecision decision)
+{
+    switch (decision) {
+        case AMETEK_UNWRAP_PENDING: return "pending_low_amplitude";
+        case AMETEK_UNWRAP_CROSSED_ZERO: return "cross_zero_theta_f_pi";
+        case AMETEK_UNWRAP_CROSSED_HALF_PI: return "cross_half_pi_theta_2f_pi";
+        case AMETEK_UNWRAP_REVERSED_NEAR_ZERO: return "reverse_near_zero_no_jump";
+        case AMETEK_UNWRAP_REVERSED_NEAR_HALF_PI: return "reverse_near_half_pi_no_jump";
+        case AMETEK_UNWRAP_UNCERTAIN: return "uncertain_no_branch_flip";
+        case AMETEK_UNWRAP_NONE:
+        default:
+            return "none";
+    }
 }
 
 int ametek_parse_response(
@@ -194,6 +468,7 @@ int ametek_parse_response(
     sample->displacement_nm = ametek_phase_to_displacement(
         sample->folded_phase_rad,
         wavelength_nm);
+    sample->unwrap_decision = AMETEK_UNWRAP_NONE;
     return 1;
 }
 

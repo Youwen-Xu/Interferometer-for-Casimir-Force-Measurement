@@ -258,6 +258,45 @@ static void update_displacement_direction_ui(void)
     SetWindowTextW(g_ametek_displacement, text);
 }
 
+static void update_unwrap_decision_ui(AmetekUnwrapDecision decision)
+{
+    switch (decision) {
+        case AMETEK_UNWRAP_PENDING:
+            SetWindowTextW(
+                g_ametek_status,
+                L"状态：边界处幅值过低，正在等待可信的锁相相位");
+            break;
+        case AMETEK_UNWRAP_CROSSED_ZERO:
+            SetWindowTextW(
+                g_ametek_status,
+                L"状态：θf 跳变约 180°，已确认穿越 q=0 并展开");
+            break;
+        case AMETEK_UNWRAP_CROSSED_HALF_PI:
+            SetWindowTextW(
+                g_ametek_status,
+                L"状态：θ2f 跳变约 180°，已确认穿越 q=π/2 并展开");
+            break;
+        case AMETEK_UNWRAP_REVERSED_NEAR_ZERO:
+            SetWindowTextW(
+                g_ametek_status,
+                L"状态：θf 未跳变，q=0 附近按真实运动换向处理");
+            break;
+        case AMETEK_UNWRAP_REVERSED_NEAR_HALF_PI:
+            SetWindowTextW(
+                g_ametek_status,
+                L"状态：θ2f 未跳变，q=π/2 附近按真实运动换向处理");
+            break;
+        case AMETEK_UNWRAP_UNCERTAIN:
+            SetWindowTextW(
+                g_ametek_status,
+                L"状态：边界证据不足，保守地不切换展开分支");
+            break;
+        case AMETEK_UNWRAP_NONE:
+        default:
+            break;
+    }
+}
+
 static const wchar_t *nt_error_name(NT_STATUS status)
 {
     switch (status) {
@@ -706,9 +745,9 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
                 &sample,
                 error,
                 256)) {
-            double unwrapped_phase = ametek_unwrap_phase(
+            double unwrapped_phase = ametek_unwrap_sample(
                 &phase_unwrapper,
-                sample.folded_phase_rad);
+                &sample);
             sample.displacement_nm = ametek_phase_to_displacement(
                 unwrapped_phase,
                 args->wavelength_nm);
@@ -1433,8 +1472,8 @@ static void finish_ametek_worker_handle(void)
 
 static void reset_ametek_readouts(void)
 {
-    SetWindowTextW(g_ametek_ch1, L"CH1　X：—　Y：—　R1：—　θ1：—");
-    SetWindowTextW(g_ametek_ch2, L"CH2　X：—　Y：—　R2：—　θ2：—");
+    SetWindowTextW(g_ametek_ch1, L"CH1（二阶频）　X：—　Y：—　R1：—　θ1：—");
+    SetWindowTextW(g_ametek_ch2, L"CH2（一阶频）　X：—　Y：—　R2：—　θ2：—");
     SetWindowTextW(g_ametek_ratio, L"R1/R2：—");
     update_displacement_direction_ui();
     SetWindowTextW(g_ametek_maxima, L"最大值　R1：—　R2：—");
@@ -1572,12 +1611,17 @@ static void save_ametek_csv(void)
         show_error(L"无法创建 CSV 文件。");
         return;
     }
-    fputs("Time(s),X1,Y1,R1,Theta1(deg),X2,Y2,R2,Theta2(deg),R1/R2,UnwrappedDisplacement(nm)\r\n", file);
+    fputs(
+        "Time(s),X1_2f,Y1_2f,R1_2f,Theta1_2f(deg),"
+        "X2_f,Y2_f,R2_f,Theta2_f(deg),R1/R2,FoldedPhase(rad),"
+        "UnwrapDecision,UnwrappedDisplacement(nm)\r\n",
+        file);
     for (index = 0; index < g_ametek_sample_count; ++index) {
         const AmetekSample *sample = &g_ametek_samples[index];
         fprintf(
             file,
-            "%.6f,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\r\n",
+            "%.6f,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,"
+            "%.9g,%s,%.9g\r\n",
             sample->elapsed_s,
             sample->x1,
             sample->y1,
@@ -1588,6 +1632,8 @@ static void save_ametek_csv(void)
             sample->r2,
             sample->theta2,
             sample->ratio,
+            sample->folded_phase_rad,
+            ametek_unwrap_decision_name(sample->unwrap_decision),
             displayed_displacement_nm(sample));
     }
     if (fclose(file) != 0) {
@@ -2095,10 +2141,10 @@ static void create_ui(void)
         0, L"STATIC", L"状态：尚未开始采集", SS_LEFT,
         780, 238, 358, 25, 0);
     g_ametek_ch1 = make_control(
-        0, L"STATIC", L"CH1　X：—　Y：—　R1：—　θ1：—", SS_LEFT,
+        0, L"STATIC", L"CH1（二阶频）　X：—　Y：—　R1：—　θ1：—", SS_LEFT,
         780, 272, 358, 25, 0);
     g_ametek_ch2 = make_control(
-        0, L"STATIC", L"CH2　X：—　Y：—　R2：—　θ2：—", SS_LEFT,
+        0, L"STATIC", L"CH2（一阶频）　X：—　Y：—　R2：—　θ2：—", SS_LEFT,
         780, 304, 358, 25, 0);
     g_ametek_ratio = make_control(
         0, L"STATIC", L"R1/R2：—", SS_LEFT,
@@ -2355,7 +2401,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     swprintf(
                         text,
                         384,
-                        L"CH1　X：%.5g　Y：%.5g　R1：%.5g　θ1：%.4g°",
+                        L"CH1（二阶频）　X：%.5g　Y：%.5g　R1：%.5g　θ1：%.4g°",
                         event->sample.x1,
                         event->sample.y1,
                         event->sample.r1,
@@ -2364,7 +2410,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     swprintf(
                         text,
                         384,
-                        L"CH2　X：%.5g　Y：%.5g　R2：%.5g　θ2：%.4g°",
+                        L"CH2（一阶频）　X：%.5g　Y：%.5g　R2：%.5g　θ2：%.4g°",
                         event->sample.x2,
                         event->sample.y2,
                         event->sample.r2,
@@ -2377,6 +2423,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                     }
                     SetWindowTextW(g_ametek_ratio, text);
                     update_displacement_direction_ui();
+                    update_unwrap_decision_ui(event->sample.unwrap_decision);
                     swprintf(
                         text,
                         384,
