@@ -4,49 +4,33 @@
 #include <stddef.h>
 
 #define AMETEK_SAMPLE_INTERVAL_MS 100U
-#define AMETEK_MAX_INTERPOLATED_GAP_SAMPLES 5U
 
 typedef struct AmetekCalibration {
     double ax_f;
     double ay_f;
-    double ax_2f;
-    double ay_2f;
 } AmetekCalibration;
 
 typedef struct AmetekSample {
     double elapsed_s;
-    double x1;
-    double y1;
-    double r1;
-    double theta1;
-    double x2;
-    double y2;
-    double r2;
-    double theta2;
+    double x_f;
+    double y_f;
+    double r_f;
+    double theta_f;
 
     double sine_component;
-    double cosine_component;
-    double phasor_radius;
-    double wrapped_phase_rad;
-    double unwrapped_phase_rad;
+    double phase_rad;
     double relative_phase_rad;
     double displacement_nm;
 
     int phase_valid;
-    int phase_interpolated;
-    int phase_ambiguous;
-    int low_radius;
+    int sine_clamped;
+    int sine_out_of_range;
 } AmetekSample;
 
-typedef struct AmetekPhaseTracker {
+typedef struct AmetekPhaseReference {
     int initialized;
-    unsigned int invalid_streak;
-    double previous_sine;
-    double previous_cosine;
-    double nominal_radius;
     double initial_phase_rad;
-    double unwrapped_phase_rad;
-} AmetekPhaseTracker;
+} AmetekPhaseReference;
 
 typedef struct AmetekPeakToPeak {
     int initialized;
@@ -54,10 +38,6 @@ typedef struct AmetekPeakToPeak {
     double x_f_max;
     double y_f_min;
     double y_f_max;
-    double x_2f_min;
-    double x_2f_max;
-    double y_2f_min;
-    double y_2f_max;
 } AmetekPeakToPeak;
 
 typedef struct AmetekDisplacementStatistics {
@@ -76,13 +56,12 @@ enum AmetekQualityState {
 typedef struct AmetekQualityMetrics {
     enum AmetekQualityState state;
     size_t sample_count;
-    size_t low_radius_count;
-    double f_consistency_error;
-    double two_f_consistency_error;
-    double ellipse_axis_ratio;
-    double estimated_phase_error_rad;
-    double ellipse_fit_error;
-    double low_radius_fraction;
+    size_t out_of_range_count;
+    double consistency_error;
+    double positive_peak;
+    double negative_peak;
+    double amplitude_error;
+    double out_of_range_fraction;
 } AmetekQualityMetrics;
 
 typedef struct AmetekClient {
@@ -92,7 +71,7 @@ typedef struct AmetekClient {
 
 int ametek_calibration_is_valid(const AmetekCalibration *calibration);
 
-void ametek_phase_tracker_reset(AmetekPhaseTracker *tracker);
+void ametek_phase_reference_reset(AmetekPhaseReference *reference);
 
 void ametek_peak_to_peak_reset(AmetekPeakToPeak *tracker);
 
@@ -103,9 +82,7 @@ int ametek_peak_to_peak_update(
 int ametek_peak_to_peak_values(
     const AmetekPeakToPeak *tracker,
     double *x_f,
-    double *y_f,
-    double *x_2f,
-    double *y_2f);
+    double *y_f);
 
 int ametek_displacement_statistics(
     const AmetekSample *samples,
@@ -115,7 +92,7 @@ int ametek_displacement_statistics(
 int ametek_process_sample(
     AmetekSample *sample,
     const AmetekCalibration *calibration,
-    AmetekPhaseTracker *tracker,
+    AmetekPhaseReference *reference,
     double wavelength_nm);
 
 void ametek_assess_calibration(

@@ -143,8 +143,6 @@ enum ControlId {
     ID_AMETEK_LAMBDA,
     ID_AMETEK_AX_F,
     ID_AMETEK_AY_F,
-    ID_AMETEK_AX_2F,
-    ID_AMETEK_AY_2F,
     ID_AMETEK_START,
     ID_AMETEK_STOP,
     ID_AMETEK_SAVE,
@@ -161,16 +159,14 @@ enum ControlId {
 #define AMETEK_PLOT_MAX_POINTS 200U
 
 #define CONTENT_WIDTH 1240
-#define CONTENT_HEIGHT 1210
+#define CONTENT_HEIGHT 1115
 #define PLOT_LEFT 20
 #define PLOT_RIGHT 1220
 #define SIGNAL_PLOT_RIGHT 1000
 #define PLOT_F_TOP 650
-#define PLOT_F_BOTTOM 810
-#define PLOT_2F_TOP 820
-#define PLOT_2F_BOTTOM 980
-#define PLOT_DISPLACEMENT_TOP 990
-#define PLOT_DISPLACEMENT_BOTTOM 1185
+#define PLOT_F_BOTTOM 850
+#define PLOT_DISPLACEMENT_TOP 860
+#define PLOT_DISPLACEMENT_BOTTOM 1090
 
 static HINSTANCE g_instance;
 static HWND g_main_window;
@@ -194,18 +190,14 @@ static HWND g_ametek_host;
 static HWND g_ametek_lambda;
 static HWND g_ametek_ax_f;
 static HWND g_ametek_ay_f;
-static HWND g_ametek_ax_2f;
-static HWND g_ametek_ay_2f;
 static HWND g_ametek_start;
 static HWND g_ametek_stop;
 static HWND g_ametek_save;
 static HWND g_ametek_reverse;
 static HWND g_ametek_status;
-static HWND g_ametek_ch1;
+static HWND g_ametek_f_values;
 static HWND g_ametek_f_peaks;
-static HWND g_ametek_ch2;
-static HWND g_ametek_2f_peaks;
-static HWND g_ametek_ratio;
+static HWND g_ametek_phase;
 static HWND g_ametek_displacement;
 static HWND g_ametek_displacement_std;
 static HWND g_ametek_maxima;
@@ -232,15 +224,13 @@ static AmetekSample *g_ametek_samples;
 static AmetekPeakToPeak g_ametek_peaks;
 static size_t g_ametek_sample_count;
 static size_t g_ametek_sample_capacity;
-static size_t g_ametek_low_count;
-static double g_ametek_r1_max;
-static double g_ametek_r2_max;
+static size_t g_ametek_out_of_range_count;
 static int g_displacement_reversed;
 static int g_quality_state = AMETEK_QUALITY_INSUFFICIENT;
 static int g_scroll_x;
 static int g_scroll_y;
 static double g_active_wavelength_nm = 632.8;
-static AmetekCalibration g_active_calibration = {1.0, 1.0, 1.0, 1.0};
+static AmetekCalibration g_active_calibration = {1.0, 1.0};
 
 static void set_quality_visual(enum AmetekQualityState state);
 
@@ -431,65 +421,9 @@ static void clear_ametek_samples(void)
     }
     g_ametek_sample_count = 0;
     g_ametek_sample_capacity = 0;
-    g_ametek_low_count = 0;
-    g_ametek_r1_max = 0.0;
-    g_ametek_r2_max = 0.0;
+    g_ametek_out_of_range_count = 0;
     g_quality_state = AMETEK_QUALITY_INSUFFICIENT;
     ametek_peak_to_peak_reset(&g_ametek_peaks);
-}
-
-static void bridge_recent_phase_gap(void)
-{
-    size_t latest;
-    size_t gap_start;
-    size_t previous;
-    size_t gap_count;
-    size_t index;
-    AmetekSample *before;
-    AmetekSample *after;
-    double duration;
-
-    if (g_ametek_sample_count < 3U) {
-        return;
-    }
-    latest = g_ametek_sample_count - 1U;
-    after = &g_ametek_samples[latest];
-    if (!after->phase_valid || after->phase_ambiguous) {
-        return;
-    }
-    gap_start = latest;
-    while (gap_start > 0U && !g_ametek_samples[gap_start - 1U].phase_valid) {
-        --gap_start;
-    }
-    gap_count = latest - gap_start;
-    if (gap_count == 0U ||
-        gap_count > AMETEK_MAX_INTERPOLATED_GAP_SAMPLES ||
-        gap_start == 0U) {
-        return;
-    }
-    previous = gap_start - 1U;
-    before = &g_ametek_samples[previous];
-    if (!before->phase_valid || !isfinite(before->unwrapped_phase_rad)) {
-        return;
-    }
-    duration = after->elapsed_s - before->elapsed_s;
-    if (duration <= 0.0) {
-        return;
-    }
-
-    for (index = gap_start; index < latest; ++index) {
-        AmetekSample *sample = &g_ametek_samples[index];
-        double fraction = (sample->elapsed_s - before->elapsed_s) / duration;
-        sample->unwrapped_phase_rad = before->unwrapped_phase_rad +
-            fraction * (after->unwrapped_phase_rad - before->unwrapped_phase_rad);
-        sample->relative_phase_rad = before->relative_phase_rad +
-            fraction * (after->relative_phase_rad - before->relative_phase_rad);
-        sample->displacement_nm = ametek_phase_to_displacement(
-            sample->relative_phase_rad,
-            g_active_wavelength_nm);
-        sample->phase_valid = 1;
-        sample->phase_interpolated = 1;
-    }
 }
 
 static int append_ametek_sample(const AmetekSample *sample)
@@ -523,15 +457,8 @@ static int append_ametek_sample(const AmetekSample *sample)
     }
     g_ametek_samples[g_ametek_sample_count++] = *sample;
     (void)ametek_peak_to_peak_update(&g_ametek_peaks, sample);
-    if (sample->low_radius) {
-        ++g_ametek_low_count;
-    }
-    bridge_recent_phase_gap();
-    if (g_ametek_sample_count == 1 || sample->r1 > g_ametek_r1_max) {
-        g_ametek_r1_max = sample->r1;
-    }
-    if (g_ametek_sample_count == 1 || sample->r2 > g_ametek_r2_max) {
-        g_ametek_r2_max = sample->r2;
+    if (sample->sine_out_of_range) {
+        ++g_ametek_out_of_range_count;
     }
     return 1;
 }
@@ -772,8 +699,6 @@ static void update_ametek_controls(void)
     EnableWindow(g_ametek_lambda, !running);
     EnableWindow(g_ametek_ax_f, !running);
     EnableWindow(g_ametek_ay_f, !running);
-    EnableWindow(g_ametek_ax_2f, !running);
-    EnableWindow(g_ametek_ay_2f, !running);
     EnableWindow(g_ametek_start, !running);
     EnableWindow(g_ametek_stop, running);
     EnableWindow(g_ametek_save, !running && g_ametek_sample_count > 0);
@@ -785,7 +710,7 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
     AmetekArgs *args = (AmetekArgs *)parameter;
     AmetekClient client;
     AmetekSample sample;
-    AmetekPhaseTracker phase_tracker;
+    AmetekPhaseReference phase_reference;
     wchar_t error[256];
     ULONGLONG start_ms;
     ULONGLONG next_sample_ms;
@@ -799,7 +724,7 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
     }
     swprintf(status, 256, L"采集中：10 Hz，只读访问 %ls", args->host);
     post_ametek_event(AMETEK_EVENT_STATUS, 1, NULL, status);
-    ametek_phase_tracker_reset(&phase_tracker);
+    ametek_phase_reference_reset(&phase_reference);
     start_ms = GetTickCount64();
     next_sample_ms = start_ms;
 
@@ -827,7 +752,7 @@ static DWORD WINAPI ametek_thread(LPVOID parameter)
             if (ametek_process_sample(
                     &sample,
                     &args->calibration,
-                    &phase_tracker,
+                    &phase_reference,
                     args->wavelength_nm)) {
                 consecutive_errors = 0;
                 post_ametek_event(AMETEK_EVENT_SAMPLE, 1, &sample, NULL);
@@ -1557,17 +1482,15 @@ static void finish_ametek_worker_handle(void)
 
 static void reset_ametek_readouts(void)
 {
-    SetWindowTextW(g_ametek_ch1, L"f　　Xf：—　Yf：—");
+    SetWindowTextW(g_ametek_f_values, L"f　　Xf：—　Yf：—");
     SetWindowTextW(g_ametek_f_peaks, L"Xf：—\nYf：—");
-    SetWindowTextW(g_ametek_ch2, L"2f　 X2f：—　Y2f：—");
-    SetWindowTextW(g_ametek_2f_peaks, L"X2f：—\nY2f：—");
-    SetWindowTextW(g_ametek_ratio, L"相位：—　半径：—");
+    SetWindowTextW(g_ametek_phase, L"相位：—　S=sinΦ：—");
     update_displacement_direction_ui();
-    SetWindowTextW(g_ametek_maxima, L"低幅值点：—");
+    SetWindowTextW(g_ametek_maxima, L"归一化越界点：—");
     SetWindowTextW(g_ametek_count, L"样本数：0");
     SetWindowTextW(
         g_ametek_quality,
-        L"振幅标定检查：等待足够的相位变化数据…");
+        L"振幅标定检查：等待数据覆盖 sinΦ 的正、负峰…");
     set_quality_visual(AMETEK_QUALITY_INSUFFICIENT);
 }
 
@@ -1597,72 +1520,53 @@ static void set_quality_visual(enum AmetekQualityState state)
 static void update_ametek_quality_ui(void)
 {
     AmetekQualityMetrics metrics;
-    size_t first = g_ametek_sample_count > AMETEK_PLOT_MAX_POINTS
-        ? g_ametek_sample_count - AMETEK_PLOT_MAX_POINTS
-        : 0U;
-    const AmetekSample *samples = g_ametek_sample_count > 0U
-        ? &g_ametek_samples[first]
-        : NULL;
-    size_t count = g_ametek_sample_count - first;
     wchar_t text[512];
-    double phase_error_deg;
 
     ametek_assess_calibration(
-        samples,
-        count,
+        g_ametek_samples,
+        g_ametek_sample_count,
         &g_active_calibration,
         &metrics);
     set_quality_visual(metrics.state);
-    phase_error_deg = isfinite(metrics.estimated_phase_error_rad)
-        ? metrics.estimated_phase_error_rad * 180.0 / 3.14159265358979323846
-        : NAN;
 
     if (metrics.state == AMETEK_QUALITY_GOOD) {
         swprintf(
             text,
             512,
-            L"振幅标定正常：相对比例一致，估计最大 Φ 误差 %.2f°\n"
-            L"f / 2f 一致性误差 %.1f%% / %.1f%%　低幅值 %.1f%%",
-            phase_error_deg,
-            metrics.f_consistency_error * 100.0,
-            metrics.two_f_consistency_error * 100.0,
-            metrics.low_radius_fraction * 100.0);
+            L"一倍频振幅标定正常：归一化正峰 %.3f，负峰 %.3f\n"
+            L"Xf/Yf 一致性误差 %.1f%%　越界 %.1f%%",
+            metrics.positive_peak,
+            metrics.negative_peak,
+            metrics.consistency_error * 100.0,
+            metrics.out_of_range_fraction * 100.0);
     } else if (metrics.state == AMETEK_QUALITY_WARNING) {
         swprintf(
             text,
             512,
-            L"请复核四个振幅：估计最大 Φ 误差 %.2f°，建议微调大小或符号。\n"
-            L"f / 2f 一致性误差 %.1f%% / %.1f%%　低幅值 %.1f%%",
-            phase_error_deg,
-            metrics.f_consistency_error * 100.0,
-            metrics.two_f_consistency_error * 100.0,
-            metrics.low_radius_fraction * 100.0);
+            L"请微调 aXf / aYf：归一化正峰 %.3f，负峰 %.3f\n"
+            L"峰值误差 %.1f%%　两路一致性 %.1f%%　越界 %.1f%%",
+            metrics.positive_peak,
+            metrics.negative_peak,
+            metrics.amplitude_error * 100.0,
+            metrics.consistency_error * 100.0,
+            metrics.out_of_range_fraction * 100.0);
     } else if (metrics.state == AMETEK_QUALITY_BAD) {
-        if (isfinite(phase_error_deg)) {
-            swprintf(
-                text,
-                512,
-                L"当前输入的四个振幅使 Φ 误差过大，请调整输入值后重新采集。\n"
-                L"估计最大误差 %.2f°　f / 2f 一致性 %.1f%% / %.1f%%　低幅值 %.1f%%",
-                phase_error_deg,
-                metrics.f_consistency_error * 100.0,
-                metrics.two_f_consistency_error * 100.0,
-                metrics.low_radius_fraction * 100.0);
-        } else {
-            swprintf(
-                text,
-                512,
-                L"当前输入的四个振幅无法得到可靠 Φ，请调整大小或符号。\n"
-                L"低幅值点 %.1f%%；当前归一化轨迹无法可靠拟合为圆。",
-                metrics.low_radius_fraction * 100.0);
-        }
+        swprintf(
+            text,
+            512,
+            L"当前 aXf / aYf 与数据不一致，无法可靠恢复 Φ。\n"
+            L"归一化正峰 %.3f，负峰 %.3f；两路一致性 %.1f%%，越界 %.1f%%",
+            metrics.positive_peak,
+            metrics.negative_peak,
+            metrics.consistency_error * 100.0,
+            metrics.out_of_range_fraction * 100.0);
     } else {
         swprintf(
             text,
             512,
-            L"振幅标定检查：数据覆盖不足，暂时不能判断四振幅是否正确。\n"
-            L"请继续采集，使相位轨迹至少覆盖三个象限（当前 %llu 点）。",
-            (unsigned long long)count);
+            L"振幅标定检查：尚未同时覆盖 sinΦ 的正峰和负峰。\n"
+            L"请完整扫描至少一个周期；系数大小可取峰峰值 / 2（当前 %llu 点）。",
+            (unsigned long long)g_ametek_sample_count);
     }
     SetWindowTextW(g_ametek_quality, text);
 }
@@ -1705,12 +1609,10 @@ static void start_ametek_acquisition(void)
     }
     if (!parse_double_control(g_ametek_ax_f, &calibration.ax_f) ||
         !parse_double_control(g_ametek_ay_f, &calibration.ay_f) ||
-        !parse_double_control(g_ametek_ax_2f, &calibration.ax_2f) ||
-        !parse_double_control(g_ametek_ay_2f, &calibration.ay_2f) ||
         !ametek_calibration_is_valid(&calibration)) {
         show_error(
-            L"四个振幅必须是有限数值，并且 f 与 2f 两组都至少有一个非零振幅。\n"
-            L"振幅允许输入负数；默认值均为 1。");
+            L"aXf 和 aYf 必须是有限数值，并且不能同时为零。\n"
+            L"系数大小取对应一倍频曲线峰峰值的一半；允许输入负数。");
         return;
     }
     if (!parse_double_control(g_ametek_lambda, &wavelength_nm) || wavelength_nm <= 0.0) {
@@ -1807,34 +1709,26 @@ static void save_ametek_csv(void)
         return;
     }
     fputs(
-        "Time(s),Xf,Yf,Rf,ThetaF(deg),X2f,Y2f,R2f,Theta2F(deg),"
-        "SinPhi,CosPhi,PhasorRadius,WrappedPhi(rad),UnwrappedPhi(rad),"
-        "RelativePhi(rad),PhaseValid,Interpolated,Ambiguous,RelativeDisplacement(nm)\r\n",
+        "Time(s),Xf,Yf,Rf,ThetaF(deg),SinPhi,Phi_arcsin(rad),"
+        "RelativePhi(rad),PhaseValid,SinClamped,SinOutOfRange,"
+        "RelativeDisplacement(nm)\r\n",
         file);
     for (index = 0; index < g_ametek_sample_count; ++index) {
         const AmetekSample *sample = &g_ametek_samples[index];
         fprintf(
             file,
-            "%.6f,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,"
-            "%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%d,%d,%d,%.9g\r\n",
+            "%.6f,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%d,%d,%d,%.9g\r\n",
             sample->elapsed_s,
-            sample->x1,
-            sample->y1,
-            sample->r1,
-            sample->theta1,
-            sample->x2,
-            sample->y2,
-            sample->r2,
-            sample->theta2,
+            sample->x_f,
+            sample->y_f,
+            sample->r_f,
+            sample->theta_f,
             sample->sine_component,
-            sample->cosine_component,
-            sample->phasor_radius,
-            sample->wrapped_phase_rad,
-            sample->unwrapped_phase_rad,
+            sample->phase_rad,
             sample->relative_phase_rad,
             sample->phase_valid,
-            sample->phase_interpolated,
-            sample->phase_ambiguous,
+            sample->sine_clamped,
+            sample->sine_out_of_range,
             displayed_displacement_nm(sample));
     }
     if (fclose(file) != 0) {
@@ -1915,17 +1809,13 @@ static LRESULT CALLBACK arrow_subclass_proc(
 
 enum PlotKind {
     PLOT_KIND_F_XY = 1,
-    PLOT_KIND_2F_XY,
     PLOT_KIND_DISPLACEMENT
 };
 
 static double plot_value(const AmetekSample *sample, enum PlotKind kind, int series)
 {
     if (kind == PLOT_KIND_F_XY) {
-        return series == 0 ? sample->x1 : sample->y1;
-    }
-    if (kind == PLOT_KIND_2F_XY) {
-        return series == 0 ? sample->x2 : sample->y2;
+        return series == 0 ? sample->x_f : sample->y_f;
     }
     return displayed_displacement_nm(sample);
 }
@@ -2123,8 +2013,8 @@ static void draw_plot_contents(
         value_max,
         first_color);
     if (series_count == 2) {
-        const wchar_t *first_name = kind == PLOT_KIND_F_XY ? L"Xf" : L"X2f";
-        const wchar_t *second_name = kind == PLOT_KIND_F_XY ? L"Yf" : L"Y2f";
+        const wchar_t *first_name = L"Xf";
+        const wchar_t *second_name = L"Yf";
         draw_plot_series(
             dc,
             &graph,
@@ -2209,20 +2099,6 @@ static void paint_ametek_plots(HWND window)
     set_scrolled_rect(
         &bounds,
         PLOT_LEFT,
-        PLOT_2F_TOP,
-        SIGNAL_PLOT_RIGHT,
-        PLOT_2F_BOTTOM);
-    draw_plot_buffered(
-        dc,
-        &bounds,
-        PLOT_KIND_2F_XY,
-        L"二次谐波 2f：X2f 与 Y2f（与上图时间轴对齐）",
-        RGB(20, 145, 105),
-        RGB(210, 120, 25));
-
-    set_scrolled_rect(
-        &bounds,
-        PLOT_LEFT,
         PLOT_DISPLACEMENT_TOP,
         PLOT_RIGHT,
         PLOT_DISPLACEMENT_BOTTOM);
@@ -2231,8 +2107,8 @@ static void paint_ametek_plots(HWND window)
         &bounds,
         PLOT_KIND_DISPLACEMENT,
         g_displacement_reversed
-            ? L"连续相对位移 (nm，atan2 展开 · 已反转)"
-            : L"连续相对位移 (nm，atan2 展开)",
+            ? L"相对位移 (nm，由 arcsin 主值直接计算 · 已反转)"
+            : L"相对位移 (nm，由 arcsin 主值直接计算)",
         RGB(175, 55, 175),
         RGB(175, 55, 175));
     EndPaint(window, &paint);
@@ -2258,7 +2134,7 @@ static void create_ui(void)
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
     set_control_font(label, g_title_font);
-    make_control(0, L"STATIC", L"NATORS 纳米位移台 + Ametek 7270 双通道读出", SS_LEFT, 24, 52, 520, 24, 0);
+    make_control(0, L"STATIC", L"NATORS 纳米位移台 + Ametek 7270 一倍频读出", SS_LEFT, 24, 52, 520, 24, 0);
 
     group = make_control(0, L"BUTTON", L" 设备连接 ", BS_GROUPBOX, 20, 84, 722, 118, 0);
     (void)group;
@@ -2348,7 +2224,7 @@ static void create_ui(void)
     group = make_control(
         0,
         L"BUTTON",
-        L" Ametek 7270 · PGC 相位与位移 ",
+        L" Ametek 7270 · 一倍频相位与位移 ",
         BS_GROUPBOX,
         760, 84, 460, 526, 0);
     (void)group;
@@ -2370,79 +2246,68 @@ static void create_ui(void)
     make_control(
         0,
         L"STATIC",
-        L"四个带符号振幅（对应 X/Y 信号中 sinΦ 或 cosΦ 前的系数）",
+        L"两个带符号系数：Xf = aXf·sinΦ，Yf = aYf·sinΦ",
         SS_LEFT,
         780, 153, 416, 25, 0);
-    make_control(0, L"STATIC", L"Xf 振幅", SS_LEFT, 780, 186, 70, 25, 0);
+    make_control(0, L"STATIC", L"aXf 系数", SS_LEFT, 780, 186, 70, 25, 0);
     g_ametek_ax_f = make_control(
         WS_EX_CLIENTEDGE, L"EDIT", L"1", ES_AUTOHSCROLL | WS_TABSTOP,
         850, 182, 116, 29, ID_AMETEK_AX_F);
-    make_control(0, L"STATIC", L"Yf 振幅", SS_LEFT, 986, 186, 70, 25, 0);
+    make_control(0, L"STATIC", L"aYf 系数", SS_LEFT, 986, 186, 70, 25, 0);
     g_ametek_ay_f = make_control(
         WS_EX_CLIENTEDGE, L"EDIT", L"1", ES_AUTOHSCROLL | WS_TABSTOP,
         1056, 182, 140, 29, ID_AMETEK_AY_F);
-    make_control(0, L"STATIC", L"X2f 振幅", SS_LEFT, 780, 222, 76, 25, 0);
-    g_ametek_ax_2f = make_control(
-        WS_EX_CLIENTEDGE, L"EDIT", L"1", ES_AUTOHSCROLL | WS_TABSTOP,
-        856, 218, 110, 29, ID_AMETEK_AX_2F);
-    make_control(0, L"STATIC", L"Y2f 振幅", SS_LEFT, 986, 222, 76, 25, 0);
-    g_ametek_ay_2f = make_control(
-        WS_EX_CLIENTEDGE, L"EDIT", L"1", ES_AUTOHSCROLL | WS_TABSTOP,
-        1062, 218, 134, 29, ID_AMETEK_AY_2F);
     make_control(
         0,
         L"STATIC",
-        L"允许负数；f 与 2f 两组各至少一个非零。采集时输入项会锁定。",
+        L"系数大小 = 对应曲线峰峰值 / 2；允许负数；两者不能同时为零。",
         SS_LEFT,
-        780, 252, 416, 24, 0);
+        780, 222, 416, 24, 0);
 
     g_ametek_start = make_control(
         0, L"BUTTON", L"开始采集", BS_PUSHBUTTON | WS_TABSTOP,
-        780, 281, 96, 34, ID_AMETEK_START);
+        780, 253, 96, 34, ID_AMETEK_START);
     g_ametek_stop = make_control(
         0, L"BUTTON", L"停止采集", BS_PUSHBUTTON | WS_TABSTOP,
-        886, 281, 96, 34, ID_AMETEK_STOP);
+        886, 253, 96, 34, ID_AMETEK_STOP);
     g_ametek_save = make_control(
         0, L"BUTTON", L"保存 CSV", BS_PUSHBUTTON | WS_TABSTOP,
-        992, 281, 96, 34, ID_AMETEK_SAVE);
+        992, 253, 96, 34, ID_AMETEK_SAVE);
     g_ametek_reverse = make_control(
         0, L"BUTTON", L"反转：关", BS_PUSHBUTTON | WS_TABSTOP,
-        1098, 281, 98, 34, ID_AMETEK_REVERSE);
+        1098, 253, 98, 34, ID_AMETEK_REVERSE);
     g_ametek_status = make_control(
         0, L"STATIC", L"状态：尚未开始采集（10 Hz）", SS_LEFT,
-        780, 323, 416, 25, 0);
-    g_ametek_ch1 = make_control(
+        780, 295, 416, 25, 0);
+    g_ametek_f_values = make_control(
         0, L"STATIC", L"f　　Xf：—　Yf：—", SS_LEFT,
-        780, 351, 416, 25, 0);
-    g_ametek_ch2 = make_control(
-        0, L"STATIC", L"2f　 X2f：—　Y2f：—", SS_LEFT,
-        780, 377, 416, 25, 0);
-    g_ametek_ratio = make_control(
-        0, L"STATIC", L"相位：—　半径：—", SS_LEFT,
-        780, 403, 416, 25, 0);
+        780, 323, 416, 25, 0);
+    g_ametek_phase = make_control(
+        0, L"STATIC", L"相位：—　S=sinΦ：—", SS_LEFT,
+        780, 352, 416, 25, 0);
     g_ametek_displacement = make_control(
         0, L"STATIC", L"相对位移：— nm", SS_LEFT,
-        780, 430, 416, 34, 0);
+        780, 385, 416, 34, 0);
     set_control_font(g_ametek_displacement, g_arrow_font);
     g_ametek_displacement_std = make_control(
         0,
         L"STATIC",
         L"位移标准差 σ：— nm（至少需要 2 个有效点）",
         SS_LEFT,
-        780, 466, 416, 26, 0);
+        780, 423, 416, 26, 0);
     g_ametek_quality = make_control(
         WS_EX_CLIENTEDGE,
         L"STATIC",
-        L"振幅标定检查：等待足够的相位变化数据…",
+        L"振幅标定检查：等待数据覆盖 sinΦ 的正、负峰…",
         SS_LEFT,
-        780, 498, 416, 72, 0);
+        780, 455, 416, 80, 0);
     set_quality_visual(AMETEK_QUALITY_INSUFFICIENT);
     g_ametek_maxima = make_control(
-        0, L"STATIC", L"低幅值点：—", SS_LEFT,
-        780, 574, 200, 24, 0);
+        0, L"STATIC", L"归一化越界点：—", SS_LEFT,
+        780, 548, 220, 24, 0);
     g_ametek_count = make_control(
         0, L"STATIC", L"样本数：0", SS_RIGHT,
-        990, 574, 206, 24, 0);
+        1004, 548, 192, 24, 0);
 
     group = make_control(
         0,
@@ -2464,25 +2329,6 @@ static void create_ui(void)
         SS_CENTER,
         1028, PLOT_F_TOP + 105, 172, 42, 0);
 
-    group = make_control(
-        0,
-        L"BUTTON",
-        L" 二次谐波峰峰值 ",
-        BS_GROUPBOX,
-        1010, PLOT_2F_TOP, 210, PLOT_2F_BOTTOM - PLOT_2F_TOP, 0);
-    (void)group;
-    g_ametek_2f_peaks = make_control(
-        0,
-        L"STATIC",
-        L"X2f：—\nY2f：—",
-        SS_LEFT,
-        1028, PLOT_2F_TOP + 42, 172, 56, 0);
-    make_control(
-        0,
-        L"STATIC",
-        L"当前整轮采集\n最大值 − 最小值",
-        SS_CENTER,
-        1028, PLOT_2F_TOP + 105, 172, 42, 0);
 }
 
 static void scroll_content_to(HWND window, int new_x, int new_y)
@@ -2813,8 +2659,6 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             wchar_t text[384];
             double x_f_pp;
             double y_f_pp;
-            double x_2f_pp;
-            double y_2f_pp;
 
             if (event == NULL) {
                 return 0;
@@ -2828,24 +2672,14 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                         text,
                         384,
                         L"f　　Xf：%.6g　Yf：%.6g　Rf：%.5g",
-                        event->sample.x1,
-                        event->sample.y1,
-                        event->sample.r1);
-                    SetWindowTextW(g_ametek_ch1, text);
-                    swprintf(
-                        text,
-                        384,
-                        L"2f　 X2f：%.6g　Y2f：%.6g　R2f：%.5g",
-                        event->sample.x2,
-                        event->sample.y2,
-                        event->sample.r2);
-                    SetWindowTextW(g_ametek_ch2, text);
+                        event->sample.x_f,
+                        event->sample.y_f,
+                        event->sample.r_f);
+                    SetWindowTextW(g_ametek_f_values, text);
                     if (ametek_peak_to_peak_values(
                             &g_ametek_peaks,
                             &x_f_pp,
-                            &y_f_pp,
-                            &x_2f_pp,
-                            &y_2f_pp)) {
+                            &y_f_pp)) {
                         swprintf(
                             text,
                             384,
@@ -2853,39 +2687,30 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                             x_f_pp,
                             y_f_pp);
                         SetWindowTextW(g_ametek_f_peaks, text);
-                        swprintf(
-                            text,
-                            384,
-                            L"X2f：%.6g\nY2f：%.6g",
-                            x_2f_pp,
-                            y_2f_pp);
-                        SetWindowTextW(g_ametek_2f_peaks, text);
                     }
                     if (event->sample.phase_valid) {
                         swprintf(
                             text,
                             384,
-                            L"Φ：%.6f rad　S：%.5g　Q：%.5g　半径：%.4g%ls",
-                            event->sample.relative_phase_rad,
+                            L"Φ=arcsin(S)：%.6f rad　S：%.6g%ls",
+                            event->sample.phase_rad,
                             event->sample.sine_component,
-                            event->sample.cosine_component,
-                            event->sample.phasor_radius,
-                            event->sample.phase_ambiguous ? L"　跨长缺口，周期数待核对" : L"");
+                            event->sample.sine_clamped ? L"　（已钳位到 ±1）" : L"");
                     } else {
                         swprintf(
                             text,
                             384,
-                            L"Φ：低置信度，暂不更新　半径：%.4g",
-                            event->sample.phasor_radius);
+                            L"Φ：无法计算；归一化 S=%.6g 超出允许范围",
+                            event->sample.sine_component);
                     }
-                    SetWindowTextW(g_ametek_ratio, text);
+                    SetWindowTextW(g_ametek_phase, text);
                     update_displacement_direction_ui();
                     swprintf(
                         text,
                         384,
-                        L"低幅值点：%llu（%.1f%%）",
-                        (unsigned long long)g_ametek_low_count,
-                        100.0 * (double)g_ametek_low_count /
+                        L"归一化越界点：%llu（%.1f%%）",
+                        (unsigned long long)g_ametek_out_of_range_count,
+                        100.0 * (double)g_ametek_out_of_range_count /
                             (double)g_ametek_sample_count);
                     SetWindowTextW(g_ametek_maxima, text);
                     swprintf(

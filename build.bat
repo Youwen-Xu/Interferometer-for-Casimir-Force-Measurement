@@ -33,7 +33,7 @@ if errorlevel 1 goto :failed
 if errorlevel 1 goto :failed
 
 "%PROJECT_DIR%build\test_motion_logic.exe"
-if errorlevel 1 goto :failed
+if not "%ERRORLEVEL%"=="0" goto :failed
 
 "%GCC%" -std=c11 -Wall -Wextra -Werror -O2 -finput-charset=UTF-8 ^
     -I "%PROJECT_DIR%src" ^
@@ -42,7 +42,7 @@ if errorlevel 1 goto :failed
 if errorlevel 1 goto :failed
 
 "%PROJECT_DIR%build\test_ametek.exe"
-if errorlevel 1 goto :failed
+if not "%ERRORLEVEL%"=="0" goto :failed
 
 echo.
 echo 构建与离线测试均已通过。

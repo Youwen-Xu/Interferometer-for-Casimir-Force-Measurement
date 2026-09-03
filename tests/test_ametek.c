@@ -15,12 +15,11 @@ static AmetekSample make_signal_sample(
     AmetekSample sample;
     memset(&sample, 0, sizeof(sample));
     sample.elapsed_s = elapsed_s;
-    sample.x1 = true_calibration->ax_f * sin(phase);
-    sample.y1 = true_calibration->ay_f * sin(phase);
-    sample.x2 = true_calibration->ax_2f * cos(phase);
-    sample.y2 = true_calibration->ay_2f * cos(phase);
-    sample.r1 = hypot(sample.x1, sample.y1);
-    sample.r2 = hypot(sample.x2, sample.y2);
+    sample.x_f = true_calibration->ax_f * sin(phase);
+    sample.y_f = true_calibration->ay_f * sin(phase);
+    sample.r_f = hypot(sample.x_f, sample.y_f);
+    sample.theta_f = atan2(sample.y_f, sample.x_f) * 180.0 /
+        3.14159265358979323846;
     return sample;
 }
 
@@ -30,13 +29,12 @@ static void process_series(
     const AmetekCalibration *true_calibration,
     const AmetekCalibration *entered_calibration)
 {
-    AmetekPhaseTracker tracker;
+    AmetekPhaseReference reference;
     size_t index;
-    const double pi = 3.14159265358979323846;
 
-    ametek_phase_tracker_reset(&tracker);
-    for (index = 0; index < count; ++index) {
-        double phase = -0.75 * pi + 3.5 * pi * (double)index / (double)(count - 1U);
+    ametek_phase_reference_reset(&reference);
+    for (index = 0U; index < count; ++index) {
+        double phase = -1.2 + 0.08 * (double)index;
         samples[index] = make_signal_sample(
             (double)index * 0.1,
             phase,
@@ -44,7 +42,7 @@ static void process_series(
         assert(ametek_process_sample(
             &samples[index],
             entered_calibration,
-            &tracker,
+            &reference,
             632.8));
     }
 }
@@ -53,18 +51,17 @@ int main(void)
 {
     AmetekSample sample;
     AmetekSample samples[TEST_SAMPLE_COUNT];
-    AmetekPhaseTracker tracker;
+    AmetekPhaseReference reference;
     AmetekPeakToPeak peaks;
     AmetekDisplacementStatistics statistics;
     AmetekQualityMetrics metrics;
-    AmetekCalibration calibration = {2.0, -3.0, -4.0, 5.0};
-    AmetekCalibration wrong_scale = {2.0, -3.0, -8.0, 10.0};
-    AmetekCalibration common_scale = {4.0, -6.0, -8.0, 10.0};
+    AmetekCalibration calibration = {2.0, -3.0};
+    AmetekCalibration wrong_ratio = {2.0, 3.0};
+    AmetekCalibration wrong_amplitude = {1.0, -1.5};
+    AmetekCalibration too_large = {4.0, -6.0};
     const double pi = 3.14159265358979323846;
     double x_f_pp;
     double y_f_pp;
-    double x_2f_pp;
-    double y_2f_pp;
     size_t index;
 
     memset(samples, 0, sizeof(samples));
@@ -89,103 +86,120 @@ int main(void)
     assert(!isfinite(statistics.mean_nm));
     assert(!isfinite(statistics.standard_deviation_nm));
 
-    assert(ametek_parse_response(
-        "1, 2, 2, 4, 5, 6, 2, 8,",
-        1.25,
-        &sample));
+    assert(ametek_parse_response("1, 2, 2, 4", 1.25, &sample));
     assert(fabs(sample.elapsed_s - 1.25) < 1e-12);
-    assert(fabs(sample.x1 - 1.0) < 1e-12);
-    assert(fabs(sample.y1 - 2.0) < 1e-12);
-    assert(fabs(sample.x2 - 5.0) < 1e-12);
-    assert(fabs(sample.y2 - 6.0) < 1e-12);
+    assert(fabs(sample.x_f - 1.0) < 1e-12);
+    assert(fabs(sample.y_f - 2.0) < 1e-12);
+    assert(fabs(sample.r_f - 2.0) < 1e-12);
+    assert(fabs(sample.theta_f - 4.0) < 1e-12);
+    assert(ametek_parse_response(
+        "1,2,3,4,5,6,7,8,",
+        0.0,
+        &sample));
     assert(!ametek_parse_response("1,2,3", 0.0, &sample));
-    assert(!ametek_parse_response("1,2,bad,4,5,6,7,8", 0.0, &sample));
+    assert(!ametek_parse_response("1,2,3,bad", 0.0, &sample));
 
     ametek_peak_to_peak_reset(&peaks);
+    sample.x_f = 1.0;
+    sample.y_f = 2.0;
     assert(ametek_peak_to_peak_update(&peaks, &sample));
-    sample.x1 = -4.0;
-    sample.y1 = 7.0;
-    sample.x2 = 1.0;
-    sample.y2 = 16.0;
+    sample.x_f = -3.0;
+    sample.y_f = 8.0;
     assert(ametek_peak_to_peak_update(&peaks, &sample));
-    assert(ametek_peak_to_peak_values(
-        &peaks,
-        &x_f_pp,
-        &y_f_pp,
-        &x_2f_pp,
-        &y_2f_pp));
-    assert(fabs(x_f_pp - 5.0) < 1e-12);
-    assert(fabs(y_f_pp - 5.0) < 1e-12);
-    assert(fabs(x_2f_pp - 4.0) < 1e-12);
-    assert(fabs(y_2f_pp - 10.0) < 1e-12);
+    assert(ametek_peak_to_peak_values(&peaks, &x_f_pp, &y_f_pp));
+    assert(fabs(x_f_pp - 4.0) < 1e-12);
+    assert(fabs(y_f_pp - 6.0) < 1e-12);
+    assert(fabs(x_f_pp / 2.0 - fabs(calibration.ax_f)) < 1e-12);
+    assert(fabs(y_f_pp / 2.0 - fabs(calibration.ay_f)) < 1e-12);
 
     assert(ametek_calibration_is_valid(&calibration));
     {
-        AmetekCalibration invalid = {0.0, 0.0, 1.0, 1.0};
+        AmetekCalibration invalid = {0.0, 0.0};
         assert(!ametek_calibration_is_valid(&invalid));
     }
 
-    ametek_phase_tracker_reset(&tracker);
-    for (index = 0; index < 40U; ++index) {
-        double phase = 2.8 + 0.12 * (double)index;
+    ametek_phase_reference_reset(&reference);
+    for (index = 0U; index < 80U; ++index) {
+        double phase = -1.2 + 0.08 * (double)index;
+        double expected_relative = asin(sin(phase)) - asin(sin(-1.2));
         sample = make_signal_sample((double)index * 0.1, phase, &calibration);
-        assert(ametek_process_sample(&sample, &calibration, &tracker, 632.8));
+        assert(ametek_process_sample(&sample, &calibration, &reference, 632.8));
         assert(sample.phase_valid);
         assert(fabs(sample.sine_component - sin(phase)) < 1e-12);
-        assert(fabs(sample.cosine_component - cos(phase)) < 1e-12);
-        if (index == 0U) {
-            assert(fabs(sample.displacement_nm) < 1e-12);
-        } else {
-            assert(fabs(sample.relative_phase_rad - 0.12 * (double)index) < 1e-10);
+        assert(fabs(sample.phase_rad - asin(sin(phase))) < 1e-12);
+        assert(fabs(sample.relative_phase_rad - expected_relative) < 1e-12);
+        assert(fabs(
+            sample.displacement_nm -
+            ametek_phase_to_displacement(expected_relative, 632.8)) < 1e-8);
+    }
+
+    ametek_phase_reference_reset(&reference);
+    {
+        const double reversal_phases[] = {0.0, 0.2, 0.4, 0.3, 0.1};
+        for (index = 0U; index < 5U; ++index) {
+            sample = make_signal_sample(
+                (double)index * 0.1,
+                reversal_phases[index],
+                &calibration);
+            assert(ametek_process_sample(&sample, &calibration, &reference, 632.8));
+            assert(fabs(sample.phase_rad - reversal_phases[index]) < 1e-12);
         }
     }
 
-    sample = make_signal_sample(5.0, 0.0, &calibration);
-    sample.x1 = 0.0;
-    sample.y1 = 0.0;
-    sample.x2 = 0.0;
-    sample.y2 = 0.0;
-    assert(ametek_process_sample(&sample, &calibration, &tracker, 632.8));
-    assert(sample.low_radius);
+    ametek_phase_reference_reset(&reference);
+    sample = make_signal_sample(0.0, pi / 2.0, &calibration);
+    sample.x_f *= 1.01;
+    sample.y_f *= 1.01;
+    assert(ametek_process_sample(&sample, &calibration, &reference, 632.8));
+    assert(sample.phase_valid);
+    assert(sample.sine_clamped);
+    assert(!sample.sine_out_of_range);
+    assert(fabs(sample.phase_rad - pi / 2.0) < 1e-12);
+
+    sample = make_signal_sample(0.1, pi / 2.0, &calibration);
+    sample.x_f *= 1.30;
+    sample.y_f *= 1.30;
+    assert(ametek_process_sample(&sample, &calibration, &reference, 632.8));
+    assert(sample.sine_out_of_range);
     assert(!sample.phase_valid);
     assert(!isfinite(sample.displacement_nm));
 
-    ametek_phase_tracker_reset(&tracker);
+    ametek_phase_reference_reset(&reference);
     sample = make_signal_sample(0.0, 0.1, &calibration);
-    assert(ametek_process_sample(&sample, &calibration, &tracker, 632.8));
-    for (index = 0; index <= AMETEK_MAX_INTERPOLATED_GAP_SAMPLES; ++index) {
-        sample = make_signal_sample(0.1 + (double)index * 0.1, 0.1, &calibration);
-        sample.x1 = 0.0;
-        sample.y1 = 0.0;
-        sample.x2 = 0.0;
-        sample.y2 = 0.0;
-        assert(ametek_process_sample(&sample, &calibration, &tracker, 632.8));
-        assert(!sample.phase_valid);
-    }
-    sample = make_signal_sample(1.0, 0.2, &calibration);
-    assert(ametek_process_sample(&sample, &calibration, &tracker, 632.8));
+    assert(ametek_process_sample(&sample, &calibration, &reference, 632.8));
+    sample = make_signal_sample(0.1, 0.1, &calibration);
+    sample.x_f *= 20.0;
+    sample.y_f *= 20.0;
+    assert(ametek_process_sample(&sample, &calibration, &reference, 632.8));
+    assert(!sample.phase_valid);
+    sample = make_signal_sample(0.2, 0.2, &calibration);
+    assert(ametek_process_sample(&sample, &calibration, &reference, 632.8));
     assert(sample.phase_valid);
-    assert(sample.phase_ambiguous);
+    assert(fabs(sample.relative_phase_rad - 0.1) < 1e-12);
 
     process_series(samples, TEST_SAMPLE_COUNT, &calibration, &calibration);
     ametek_assess_calibration(samples, TEST_SAMPLE_COUNT, &calibration, &metrics);
     assert(metrics.state == AMETEK_QUALITY_GOOD);
-    assert(metrics.estimated_phase_error_rad < 1e-8);
-    assert(metrics.f_consistency_error < 1e-8);
-    assert(metrics.two_f_consistency_error < 1e-8);
+    assert(metrics.consistency_error < 1e-12);
+    assert(metrics.amplitude_error < 0.01);
 
-    process_series(samples, TEST_SAMPLE_COUNT, &calibration, &wrong_scale);
-    ametek_assess_calibration(samples, TEST_SAMPLE_COUNT, &wrong_scale, &metrics);
+    process_series(samples, TEST_SAMPLE_COUNT, &calibration, &wrong_ratio);
+    ametek_assess_calibration(samples, TEST_SAMPLE_COUNT, &wrong_ratio, &metrics);
     assert(metrics.state == AMETEK_QUALITY_BAD);
-    assert(metrics.estimated_phase_error_rad > 0.30);
+    assert(metrics.consistency_error > 0.25);
 
-    process_series(samples, TEST_SAMPLE_COUNT, &calibration, &common_scale);
-    ametek_assess_calibration(samples, TEST_SAMPLE_COUNT, &common_scale, &metrics);
-    assert(metrics.state == AMETEK_QUALITY_GOOD);
-    assert(metrics.estimated_phase_error_rad < 1e-8);
+    process_series(samples, TEST_SAMPLE_COUNT, &calibration, &wrong_amplitude);
+    ametek_assess_calibration(samples, TEST_SAMPLE_COUNT, &wrong_amplitude, &metrics);
+    assert(metrics.state == AMETEK_QUALITY_BAD);
+    assert(metrics.out_of_range_fraction > 0.15);
+
+    process_series(samples, TEST_SAMPLE_COUNT, &calibration, &too_large);
+    ametek_assess_calibration(samples, TEST_SAMPLE_COUNT, &too_large, &metrics);
+    assert(metrics.state == AMETEK_QUALITY_INSUFFICIENT);
+    assert(metrics.positive_peak < 0.8);
 
     assert(fabs(ametek_phase_to_displacement(pi, 632.8) - 158.2) < 1e-9);
 
-    puts("All Ametek phase-demodulation tests passed.");
+    puts("All Ametek first-harmonic phase-recovery tests passed.");
     return 0;
 }
