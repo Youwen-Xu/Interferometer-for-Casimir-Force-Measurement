@@ -127,6 +127,47 @@ int ametek_peak_to_peak_values(
     return 1;
 }
 
+int ametek_displacement_statistics(
+    const AmetekSample *samples,
+    size_t count,
+    AmetekDisplacementStatistics *statistics)
+{
+    size_t index;
+    double mean = 0.0;
+    double squared_difference_sum = 0.0;
+
+    if (statistics == NULL || (samples == NULL && count != 0U)) {
+        return 0;
+    }
+    statistics->valid_count = 0U;
+    statistics->mean_nm = NAN;
+    statistics->standard_deviation_nm = NAN;
+
+    for (index = 0U; index < count; ++index) {
+        double value;
+        double difference;
+        double updated_difference;
+
+        if (!samples[index].phase_valid ||
+            !isfinite(samples[index].displacement_nm)) {
+            continue;
+        }
+        value = samples[index].displacement_nm;
+        ++statistics->valid_count;
+        difference = value - mean;
+        mean += difference / (double)statistics->valid_count;
+        updated_difference = value - mean;
+        squared_difference_sum += difference * updated_difference;
+    }
+
+    if (statistics->valid_count > 0U) {
+        statistics->mean_nm = mean;
+        statistics->standard_deviation_nm = sqrt(
+            fmax(0.0, squared_difference_sum / (double)statistics->valid_count));
+    }
+    return 1;
+}
+
 int ametek_process_sample(
     AmetekSample *sample,
     const AmetekCalibration *calibration,

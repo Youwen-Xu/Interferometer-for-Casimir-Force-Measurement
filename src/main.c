@@ -207,6 +207,7 @@ static HWND g_ametek_ch2;
 static HWND g_ametek_2f_peaks;
 static HWND g_ametek_ratio;
 static HWND g_ametek_displacement;
+static HWND g_ametek_displacement_std;
 static HWND g_ametek_maxima;
 static HWND g_ametek_count;
 static HWND g_ametek_quality;
@@ -260,6 +261,34 @@ static double displayed_displacement_nm(const AmetekSample *sample)
         : sample->displacement_nm;
 }
 
+static void update_displacement_statistics_ui(void)
+{
+    AmetekDisplacementStatistics statistics;
+    wchar_t text[160];
+
+    if (g_ametek_displacement_std == NULL) {
+        return;
+    }
+    if (!ametek_displacement_statistics(
+            g_ametek_samples,
+            g_ametek_sample_count,
+            &statistics) ||
+        statistics.valid_count < 2U ||
+        !isfinite(statistics.standard_deviation_nm)) {
+        SetWindowTextW(
+            g_ametek_displacement_std,
+            L"位移标准差 σ：— nm（至少需要 2 个有效点）");
+        return;
+    }
+    swprintf(
+        text,
+        160,
+        L"位移标准差 σ：%.6f nm（本轮 %llu 个有效点）",
+        statistics.standard_deviation_nm,
+        (unsigned long long)statistics.valid_count);
+    SetWindowTextW(g_ametek_displacement_std, text);
+}
+
 static void update_displacement_direction_ui(void)
 {
     wchar_t text[128];
@@ -267,6 +296,7 @@ static void update_displacement_direction_ui(void)
     SetWindowTextW(
         g_ametek_reverse,
         g_displacement_reversed ? L"反转：开" : L"反转：关");
+    update_displacement_statistics_ui();
     if (g_ametek_sample_count == 0) {
         SetWindowTextW(g_ametek_displacement, L"相对位移：— nm");
         return;
@@ -2320,7 +2350,7 @@ static void create_ui(void)
         L"BUTTON",
         L" Ametek 7270 · PGC 相位与位移 ",
         BS_GROUPBOX,
-        760, 84, 460, 486, 0);
+        760, 84, 460, 526, 0);
     (void)group;
     make_control(0, L"STATIC", L"7270 IP", SS_LEFT, 780, 115, 62, 25, 0);
     g_ametek_host = make_control(
@@ -2394,19 +2424,25 @@ static void create_ui(void)
         0, L"STATIC", L"相对位移：— nm", SS_LEFT,
         780, 430, 416, 34, 0);
     set_control_font(g_ametek_displacement, g_arrow_font);
+    g_ametek_displacement_std = make_control(
+        0,
+        L"STATIC",
+        L"位移标准差 σ：— nm（至少需要 2 个有效点）",
+        SS_LEFT,
+        780, 466, 416, 26, 0);
     g_ametek_quality = make_control(
         WS_EX_CLIENTEDGE,
         L"STATIC",
         L"振幅标定检查：等待足够的相位变化数据…",
         SS_LEFT,
-        780, 466, 416, 72, 0);
+        780, 498, 416, 72, 0);
     set_quality_visual(AMETEK_QUALITY_INSUFFICIENT);
     g_ametek_maxima = make_control(
         0, L"STATIC", L"低幅值点：—", SS_LEFT,
-        780, 542, 200, 24, 0);
+        780, 574, 200, 24, 0);
     g_ametek_count = make_control(
         0, L"STATIC", L"样本数：0", SS_RIGHT,
-        990, 542, 206, 24, 0);
+        990, 574, 206, 24, 0);
 
     group = make_control(
         0,

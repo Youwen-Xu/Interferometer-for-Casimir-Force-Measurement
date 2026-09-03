@@ -55,6 +55,7 @@ int main(void)
     AmetekSample samples[TEST_SAMPLE_COUNT];
     AmetekPhaseTracker tracker;
     AmetekPeakToPeak peaks;
+    AmetekDisplacementStatistics statistics;
     AmetekQualityMetrics metrics;
     AmetekCalibration calibration = {2.0, -3.0, -4.0, 5.0};
     AmetekCalibration wrong_scale = {2.0, -3.0, -8.0, 10.0};
@@ -65,6 +66,28 @@ int main(void)
     double x_2f_pp;
     double y_2f_pp;
     size_t index;
+
+    memset(samples, 0, sizeof(samples));
+    samples[0].phase_valid = 1;
+    samples[0].displacement_nm = 1.0;
+    samples[1].phase_valid = 1;
+    samples[1].displacement_nm = 2.0;
+    samples[2].phase_valid = 0;
+    samples[2].displacement_nm = 1000.0;
+    samples[3].phase_valid = 1;
+    samples[3].displacement_nm = 3.0;
+    samples[4].phase_valid = 1;
+    samples[4].displacement_nm = 4.0;
+    samples[5].phase_valid = 1;
+    samples[5].displacement_nm = NAN;
+    assert(ametek_displacement_statistics(samples, 6U, &statistics));
+    assert(statistics.valid_count == 4U);
+    assert(fabs(statistics.mean_nm - 2.5) < 1e-12);
+    assert(fabs(statistics.standard_deviation_nm - sqrt(1.25)) < 1e-12);
+    assert(ametek_displacement_statistics(NULL, 0U, &statistics));
+    assert(statistics.valid_count == 0U);
+    assert(!isfinite(statistics.mean_nm));
+    assert(!isfinite(statistics.standard_deviation_nm));
 
     assert(ametek_parse_response(
         "1, 2, 2, 4, 5, 6, 2, 8,",

@@ -60,6 +60,12 @@ typedef struct AmetekPeakToPeak {
     double y_2f_max;
 } AmetekPeakToPeak;
 
+typedef struct AmetekDisplacementStatistics {
+    size_t valid_count;
+    double mean_nm;
+    double standard_deviation_nm;
+} AmetekDisplacementStatistics;
+
 enum AmetekQualityState {
     AMETEK_QUALITY_INSUFFICIENT = 0,
     AMETEK_QUALITY_GOOD,
@@ -100,6 +106,11 @@ int ametek_peak_to_peak_values(
     double *y_f,
     double *x_2f,
     double *y_2f);
+
+int ametek_displacement_statistics(
+    const AmetekSample *samples,
+    size_t count,
+    AmetekDisplacementStatistics *statistics);
 
 int ametek_process_sample(
     AmetekSample *sample,
