@@ -164,6 +164,8 @@ enum ControlId {
 #define PLOT_TOP 570
 #define PLOT_RIGHT 1028
 #define PLOT_BOTTOM 870
+#define CONTENT_HEIGHT 890
+#define VERTICAL_SCROLL_LINE 48
 
 static HINSTANCE g_instance;
 static HWND g_main_window;
@@ -220,7 +222,9 @@ static size_t g_ametek_sample_capacity;
 static double g_ametek_r1_max;
 static double g_ametek_r2_max;
 static int g_displacement_reversed;
-static int g_plot_page;
+static int g_plot_page = 2;
+static int g_vertical_scroll_position;
+static int g_mouse_wheel_delta;
 
 static enum AppState app_state(void)
 {
@@ -556,6 +560,99 @@ static HWND make_control(
         set_control_font(control, g_font);
     }
     return control;
+}
+
+static int maximum_vertical_scroll(HWND window)
+{
+    RECT client;
+    int client_height;
+
+    GetClientRect(window, &client);
+    client_height = client.bottom - client.top;
+    return CONTENT_HEIGHT > client_height
+        ? CONTENT_HEIGHT - client_height
+        : 0;
+}
+
+static void scroll_content_to(HWND window, int position)
+{
+    SCROLLINFO info;
+    int maximum = maximum_vertical_scroll(window);
+    int previous = g_vertical_scroll_position;
+
+    if (position < 0) position = 0;
+    if (position > maximum) position = maximum;
+    if (position == previous) return;
+
+    g_vertical_scroll_position = position;
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = SIF_POS;
+    info.nPos = position;
+    SetScrollInfo(window, SB_VERT, &info, TRUE);
+    ScrollWindowEx(
+        window,
+        0,
+        previous - position,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        SW_ERASE | SW_INVALIDATE | SW_SCROLLCHILDREN);
+}
+
+static void update_vertical_scrollbar(HWND window)
+{
+    RECT client;
+    SCROLLINFO info;
+    int maximum;
+    int adjusted_position;
+
+    GetClientRect(window, &client);
+    maximum = CONTENT_HEIGHT > client.bottom - client.top
+        ? CONTENT_HEIGHT - (client.bottom - client.top)
+        : 0;
+    adjusted_position = g_vertical_scroll_position;
+    if (adjusted_position > maximum) adjusted_position = maximum;
+    if (adjusted_position != g_vertical_scroll_position) {
+        int previous = g_vertical_scroll_position;
+        g_vertical_scroll_position = adjusted_position;
+        ScrollWindowEx(
+            window,
+            0,
+            previous - adjusted_position,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            SW_ERASE | SW_INVALIDATE | SW_SCROLLCHILDREN);
+    }
+
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+    info.nMin = 0;
+    info.nMax = CONTENT_HEIGHT - 1;
+    info.nPage = (UINT)(client.bottom - client.top);
+    info.nPos = g_vertical_scroll_position;
+    SetScrollInfo(window, SB_VERT, &info, TRUE);
+}
+
+static RECT plot_client_rect(void)
+{
+    RECT plot = {
+        PLOT_LEFT,
+        PLOT_TOP - g_vertical_scroll_position,
+        PLOT_RIGHT,
+        PLOT_BOTTOM - g_vertical_scroll_position
+    };
+    return plot;
+}
+
+static void invalidate_plot(HWND window)
+{
+    RECT plot = plot_client_rect();
+    InvalidateRect(window, &plot, FALSE);
 }
 
 static int parse_unsigned_control(HWND control, unsigned int *value)
@@ -1731,15 +1828,13 @@ static double plot_value(const AmetekSample *sample, enum PlotKind kind, int ser
 
 static void toggle_displacement_direction(void)
 {
-    RECT plot = {PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM};
-
     if (g_ametek_sample_count == 0 &&
         !InterlockedCompareExchange(&g_ametek_running, 0, 0)) {
         return;
     }
     g_displacement_reversed = !g_displacement_reversed;
     update_displacement_direction_ui();
-    InvalidateRect(g_main_window, &plot, FALSE);
+    invalidate_plot(g_main_window);
 }
 
 static void draw_plot_series(
@@ -1966,7 +2061,7 @@ static void paint_ametek_plots(HWND window)
     HDC dc = BeginPaint(window, &paint);
     RECT bounds;
 
-    SetRect(&bounds, PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM);
+    bounds = plot_client_rect();
     if (g_plot_page == 1) {
         draw_plot_buffered(
             dc,
@@ -2183,7 +2278,7 @@ static void create_ui(void)
     g_plot_page_buttons[2] = make_control(
         0, L"BUTTON", L"3  位移", BS_AUTORADIOBUTTON | WS_TABSTOP,
         1054, 734, 94, 34, ID_PLOT_PAGE_3);
-    SendMessageW(g_plot_page_buttons[0], BM_SETCHECK, BST_CHECKED, 0);
+    SendMessageW(g_plot_page_buttons[2], BM_SETCHECK, BST_CHECKED, 0);
     g_ametek_reverse = make_control(
         0, L"BUTTON", L"反转：关", BS_PUSHBUTTON | WS_TABSTOP,
         1054, 782, 94, 34, ID_AMETEK_REVERSE);
@@ -2248,6 +2343,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
         case WM_CREATE:
             g_main_window = window;
             create_ui();
+            update_vertical_scrollbar(window);
             update_controls();
             update_ametek_controls();
             if (SetTimer(
@@ -2258,6 +2354,65 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 SetWindowTextW(g_position, L"位移台编码器位置：刷新定时器启动失败");
             }
             return 0;
+
+        case WM_SIZE:
+            update_vertical_scrollbar(window);
+            return 0;
+
+        case WM_VSCROLL:
+        {
+            SCROLLINFO info;
+            int position = g_vertical_scroll_position;
+
+            ZeroMemory(&info, sizeof(info));
+            info.cbSize = sizeof(info);
+            info.fMask = SIF_ALL;
+            GetScrollInfo(window, SB_VERT, &info);
+            switch (LOWORD(w_param)) {
+                case SB_TOP:
+                    position = 0;
+                    break;
+                case SB_BOTTOM:
+                    position = maximum_vertical_scroll(window);
+                    break;
+                case SB_LINEUP:
+                    position -= VERTICAL_SCROLL_LINE;
+                    break;
+                case SB_LINEDOWN:
+                    position += VERTICAL_SCROLL_LINE;
+                    break;
+                case SB_PAGEUP:
+                    position -= (int)info.nPage;
+                    break;
+                case SB_PAGEDOWN:
+                    position += (int)info.nPage;
+                    break;
+                case SB_THUMBPOSITION:
+                case SB_THUMBTRACK:
+                    position = info.nTrackPos;
+                    break;
+                default:
+                    return 0;
+            }
+            scroll_content_to(window, position);
+            return 0;
+        }
+
+        case WM_MOUSEWHEEL:
+        {
+            int wheel_steps;
+
+            g_mouse_wheel_delta += GET_WHEEL_DELTA_WPARAM(w_param);
+            wheel_steps = g_mouse_wheel_delta / WHEEL_DELTA;
+            g_mouse_wheel_delta %= WHEEL_DELTA;
+            if (wheel_steps != 0) {
+                scroll_content_to(
+                    window,
+                    g_vertical_scroll_position -
+                        wheel_steps * VERTICAL_SCROLL_LINE * 3);
+            }
+            return 0;
+        }
 
         case WM_TIMER:
             if (w_param == POSITION_REFRESH_TIMER_ID) {
@@ -2296,9 +2451,8 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                 case ID_PLOT_PAGE_2:
                 case ID_PLOT_PAGE_3:
                     if (HIWORD(w_param) == BN_CLICKED) {
-                        RECT plot = {PLOT_LEFT, PLOT_TOP, PLOT_RIGHT, PLOT_BOTTOM};
                         g_plot_page = (int)LOWORD(w_param) - ID_PLOT_PAGE_1;
-                        InvalidateRect(window, &plot, FALSE);
+                        invalidate_plot(window);
                     }
                     return 0;
                 case ID_DISTANCE:
@@ -2383,12 +2537,6 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
         {
             AmetekEvent *event = (AmetekEvent *)l_param;
             wchar_t text[384];
-            RECT plots = {
-                PLOT_LEFT,
-                PLOT_TOP,
-                PLOT_RIGHT,
-                PLOT_BOTTOM
-            };
 
             if (event == NULL) {
                 return 0;
@@ -2438,7 +2586,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
                         (unsigned long long)g_ametek_sample_count,
                         event->sample.elapsed_s);
                     SetWindowTextW(g_ametek_count, text);
-                    InvalidateRect(window, &plots, FALSE);
+                    invalidate_plot(window);
                 }
             } else if (event->kind == AMETEK_EVENT_STATUS) {
                 if (event->success) {
@@ -2492,6 +2640,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
     MSG message;
     INITCOMMONCONTROLSEX controls;
     wchar_t api_error[320];
+    RECT work_area;
+    int initial_height = 920;
     (void)previous;
     (void)command_line;
 
@@ -2531,15 +2681,20 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
         return 1;
     }
 
+    if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0)) {
+        int work_height = work_area.bottom - work_area.top;
+        if (initial_height > work_height) initial_height = work_height;
+    }
+
     g_main_window = CreateWindowExW(
         0,
         window_class.lpszClassName,
         L"卡西米尔力测量 · 位移台与干涉读出",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VSCROLL,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         1200,
-        920,
+        initial_height,
         NULL,
         NULL,
         instance,
